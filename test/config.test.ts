@@ -38,9 +38,10 @@ describe("loadConfig", () => {
       OPENAI_MODEL: "gpt-5-mini"
     });
 
-    expect(config.optionalApis.parallelApiKey).toBe("parallel-test");
-    expect(config.optionalApis.openAi).toEqual({ apiKey: "openai-test", model: "gpt-5-mini" });
-    expect("searchApiKey" in config.optionalApis).toBe(false);
+    expect(config.optionalApis).toEqual({
+      parallelApiKey: "parallel-test",
+      openAi: { apiKey: "openai-test", model: "gpt-5-mini" }
+    });
   });
 
   it("rejects invalid seed rows", () => {
