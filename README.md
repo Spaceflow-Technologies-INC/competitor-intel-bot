@@ -84,7 +84,7 @@ Optional:
 
 | Variable | Purpose |
 | --- | --- |
-| `SEARCH_API_KEY` | Reserved for search/news discovery. |
+| `PARALLEL_API_KEY` | Parallel Web API key for search and page extraction. |
 | `OPENAI_API_KEY` | Reserved for LLM summarization. |
 | `OPENAI_MODEL` | Optional model name for summarization extensions. |
 | `ALERT_SCORE_THRESHOLD` | Default `0.75`. |

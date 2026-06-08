@@ -11,7 +11,7 @@ const envSchema = z.object({
   DAILY_DIGEST_HOUR_UTC: z.string().default("16"),
   WEEKLY_DIGEST_DAY_UTC: z.string().default("1"),
   ALERT_SCORE_THRESHOLD: z.string().default("0.75"),
-  SEARCH_API_KEY: z.string().optional(),
+  PARALLEL_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default("gpt-4.1-mini")
 });
@@ -34,7 +34,7 @@ export type AppConfig = {
     alertThreshold: number;
   };
   optionalApis: {
-    searchApiKey?: string;
+    parallelApiKey?: string;
     openAi?: { apiKey: string; model: string };
   };
 };
@@ -51,8 +51,8 @@ const categories = new Set<CompetitorCategory>([
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.parse(env);
   const optionalApis: AppConfig["optionalApis"] = {};
-  if (parsed.SEARCH_API_KEY) {
-    optionalApis.searchApiKey = parsed.SEARCH_API_KEY;
+  if (parsed.PARALLEL_API_KEY) {
+    optionalApis.parallelApiKey = parsed.PARALLEL_API_KEY;
   }
   if (parsed.OPENAI_API_KEY) {
     optionalApis.openAi = { apiKey: parsed.OPENAI_API_KEY, model: parsed.OPENAI_MODEL };

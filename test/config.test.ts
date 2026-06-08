@@ -30,6 +30,19 @@ describe("loadConfig", () => {
     expect(config.scoring.alertThreshold).toBe(0.75);
   });
 
+  it("loads Parallel and OpenAI API settings without generic search config", () => {
+    const config = loadConfig({
+      ...baseEnv,
+      PARALLEL_API_KEY: "parallel-test",
+      OPENAI_API_KEY: "openai-test",
+      OPENAI_MODEL: "gpt-5-mini"
+    });
+
+    expect(config.optionalApis.parallelApiKey).toBe("parallel-test");
+    expect(config.optionalApis.openAi).toEqual({ apiKey: "openai-test", model: "gpt-5-mini" });
+    expect("searchApiKey" in config.optionalApis).toBe(false);
+  });
+
   it("rejects invalid seed rows", () => {
     expect(() => loadConfig({
       ...baseEnv,
