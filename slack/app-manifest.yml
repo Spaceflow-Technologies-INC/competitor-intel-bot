@@ -1,0 +1,24 @@
+_metadata:
+  major_version: 1
+  minor_version: 1
+
+display_information:
+  name: Competitor Intel Bot
+  description: Posts competitor intelligence alerts and digests to Slack.
+  long_description: Competitor Intel Bot tracks seeded competitors, summarizes source-backed market signals, and posts high-signal alerts plus daily digests into a configured Slack channel for Spaceflow operators.
+  background_color: "#2EA790"
+
+features:
+  bot_user:
+    display_name: Competitor Intel Bot
+    always_online: false
+
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

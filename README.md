@@ -51,6 +51,26 @@ curl -X POST http://localhost:8080/jobs/collect
 curl -X POST http://localhost:8080/jobs/daily-digest
 ```
 
+## Slack app setup
+
+Create the Slack app from the repository manifest:
+
+1. Open [Slack API apps](https://api.slack.com/apps).
+2. Click **Create New App**.
+3. Select **From an app manifest**.
+4. Choose the workspace.
+5. Paste `slack/app-manifest.yml`.
+6. Review and create the app.
+7. Install the app to the workspace.
+8. Copy the bot token into `SLACK_BOT_TOKEN`.
+9. Invite the bot to the target channel:
+
+```text
+/invite @Competitor Intel Bot
+```
+
+The manifest requests only `chat:write`, which lets the bot call `chat.postMessage`. For public channels, invite the bot to the channel before posting. If you want posting to public channels without inviting the bot, add Slack's optional `chat:write.public` bot scope and reinstall the app.
+
 ## Required environment
 
 | Variable | Purpose |
