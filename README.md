@@ -51,6 +51,8 @@ curl -X POST http://localhost:8080/jobs/collect
 curl -X POST http://localhost:8080/jobs/daily-digest
 ```
 
+`/jobs/collect` searches Parallel Web, extracts source content, scores signals, and stores new high-signal intel without posting to Slack. `/jobs/daily-digest` runs a fresh collection pass, posts the morning Slack digest, then marks posted signals so duplicates are not sent again.
+
 ## Slack app setup
 
 Create the Slack app from the repository manifest:
@@ -104,6 +106,11 @@ Create a Cloud SQL Postgres database, store secrets in Secret Manager, then depl
 
 - `POST /jobs/collect`
 - `POST /jobs/daily-digest`
+
+Recommended production schedule:
+
+- `competitor-intel-collect`: `0 8 * * *` in `Europe/Istanbul`
+- `competitor-intel-daily-digest`: `0 9 * * *` in `Europe/Istanbul`
 
 The service listens on `PORT`, defaulting to `8080`.
 
