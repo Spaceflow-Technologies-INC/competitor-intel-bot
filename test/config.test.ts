@@ -44,6 +44,15 @@ describe("loadConfig", () => {
     });
   });
 
+  it("defaults OpenAI summarization to a stronger mini model", () => {
+    const config = loadConfig({
+      ...baseEnv,
+      OPENAI_API_KEY: "openai-test"
+    });
+
+    expect(config.optionalApis.openAi?.model).toBe("gpt-5.4-mini");
+  });
+
   it("rejects invalid seed rows", () => {
     expect(() => loadConfig({
       ...baseEnv,

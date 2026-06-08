@@ -86,7 +86,7 @@ Optional:
 | --- | --- |
 | `PARALLEL_API_KEY` | Parallel Web API key for search and page extraction. |
 | `OPENAI_API_KEY` | Reserved for LLM summarization. |
-| `OPENAI_MODEL` | Optional model name for summarization extensions. |
+| `OPENAI_MODEL` | Optional model name for summarization extensions. Defaults to `gpt-5.4-mini`. |
 | `ALERT_SCORE_THRESHOLD` | Default `0.75`. |
 
 Supported seed categories:

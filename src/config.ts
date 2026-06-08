@@ -13,7 +13,7 @@ const envSchema = z.object({
   ALERT_SCORE_THRESHOLD: z.string().default("0.75"),
   PARALLEL_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
-  OPENAI_MODEL: z.string().default("gpt-4.1-mini")
+  OPENAI_MODEL: z.string().default("gpt-5.4-mini")
 });
 
 export type AppConfig = {
