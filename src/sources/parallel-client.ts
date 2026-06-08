@@ -14,7 +14,7 @@ export type ExtractedPage = {
 };
 
 export type WebIntelClient = {
-  search(input: { objective: string; searchQueries: string[]; maxResults?: number }): Promise<WebSearchResult[]>;
+  search(input: { objective: string; searchQueries: string[] }): Promise<WebSearchResult[]>;
   extract(input: { urls: string[]; objective: string; searchQueries?: string[] }): Promise<ExtractedPage[]>;
 };
 
@@ -27,12 +27,10 @@ export class ParallelClient implements WebIntelClient {
     this.baseUrl = options.baseUrl ?? "https://api.parallel.ai";
   }
 
-  async search(input: { objective: string; searchQueries: string[]; maxResults?: number }): Promise<WebSearchResult[]> {
+  async search(input: { objective: string; searchQueries: string[] }): Promise<WebSearchResult[]> {
     const json = await this.post<ParallelSearchResponse>("/v1/search", {
       objective: input.objective,
-      search_queries: input.searchQueries,
-      max_results: input.maxResults ?? 5,
-      max_chars_per_result: 1200
+      search_queries: input.searchQueries
     });
     return json.results.map((result) => {
       const item: WebSearchResult = {

@@ -10,6 +10,7 @@ import { ParallelClient, type ExtractedPage, type WebIntelClient, type WebSearch
 import { createStore } from "../storage/index.js";
 import type { Store } from "../storage/memory-store.js";
 import type { SeedCompetitor } from "../types.js";
+import { createLogger } from "../logger.js";
 
 export type CollectionResult = {
   processedSignals: number;
@@ -46,6 +47,7 @@ export type CollectIntelInput = {
 };
 
 export async function collectIntel(input: CollectIntelInput): Promise<CollectionResult> {
+  const logger = createLogger();
   await seedCompetitors(input.store, input.seeds);
   const fetchedAt = input.fetchedAt ?? new Date().toISOString();
   const competitors = await input.store.listCompetitors();
@@ -58,8 +60,7 @@ export async function collectIntel(input: CollectIntelInput): Promise<Collection
       const plan = buildCompetitorSearchPlan(competitor);
       const searchResults = await input.sourceClient.search({
         objective: plan.objective,
-        searchQueries: plan.searchQueries,
-        maxResults: 5
+        searchQueries: plan.searchQueries
       });
       const pages = await extractPages(input.sourceClient, plan, searchResults);
       for (const page of pages) {
@@ -103,8 +104,20 @@ export async function collectIntel(input: CollectIntelInput): Promise<Collection
           }
         }
       }
-    } catch {
+    } catch (error) {
       errors += 1;
+      logger.error(
+        {
+          competitor: {
+            id: competitor.id,
+            name: competitor.name,
+            domain: competitor.canonicalDomain,
+            category: competitor.category
+          },
+          error: error instanceof Error ? error.message : String(error)
+        },
+        "competitor_collection_failed"
+      );
     }
   }
 

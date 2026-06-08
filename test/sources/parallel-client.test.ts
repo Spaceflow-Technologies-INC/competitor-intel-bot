@@ -37,7 +37,10 @@ describe("ParallelClient", () => {
       })
     );
     const [, request] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(JSON.parse(String(request.body)).search_queries).toEqual(["Coupa procurement AI"]);
+    const body = JSON.parse(String(request.body)) as Record<string, unknown>;
+    expect(body.search_queries).toEqual(["Coupa procurement AI"]);
+    expect(body.max_results).toBeUndefined();
+    expect(body.max_chars_per_result).toBeUndefined();
   });
 
   it("extracts focused excerpts from result URLs", async () => {
