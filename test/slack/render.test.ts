@@ -42,6 +42,8 @@ describe("Slack renderers", () => {
     expect(message.text).toContain("Competitor signal");
     expect(JSON.stringify(message.blocks)).toContain("Product launch");
     expect(JSON.stringify(message.blocks)).toContain("<https://zipsource.example/blog/launch|Source 1: zipsource.example>");
+    expect(JSON.stringify(message.blocks)).toContain("Source quality");
+    expect(JSON.stringify(message.blocks)).toContain("2 sources");
   });
 
   it("renders daily digest with top signals", () => {
@@ -68,6 +70,7 @@ describe("Slack renderers", () => {
     expect(json).not.toContain("**");
     expect(json).toContain("<https://zipsource.example/blog/launch|Source 1>");
     expect(json).toContain("<https://zipsource.example/customers/acme|Source 1>");
+    expect(json).toContain("Source quality");
     expect(json).toContain("Next move");
   });
 

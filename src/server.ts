@@ -5,6 +5,7 @@ import Fastify, { type FastifyReply } from "fastify";
 import { loadConfig } from "./config.js";
 import { runCollectionJob, type CollectionResult } from "./jobs/run-collection.js";
 import { runDailyDigestJob, type DigestResult } from "./jobs/run-digest.js";
+import { runScheduledDigestJob } from "./jobs/scheduled-digest.js";
 import { handleIntelSlashCommand } from "./slack/control.js";
 import { verifySlackRequest } from "./slack/signature.js";
 import { createStore as createDatabaseStore } from "./storage/index.js";
@@ -13,6 +14,7 @@ import type { Store } from "./storage/memory-store.js";
 export type ServerDeps = {
   runCollection: () => Promise<CollectionResult>;
   runDailyDigest: () => Promise<DigestResult>;
+  runScheduledDigest?: () => Promise<DigestResult & { skipped?: boolean; scheduledTime?: string }>;
   createStore?: () => Promise<Store>;
   slackSigningSecret?: string;
   enableJobEndpoints?: boolean;
@@ -31,6 +33,7 @@ export function buildServer(deps: ServerDeps) {
   if (deps.enableJobEndpoints !== false) {
     server.post("/jobs/collect", async () => deps.runCollection());
     server.post("/jobs/daily-digest", async () => deps.runDailyDigest());
+    server.post("/jobs/scheduled-digest", async () => (deps.runScheduledDigest ?? deps.runDailyDigest)());
   }
   server.post("/slack/commands", async (request, reply) => {
     const body = readFormBody(request.body);
@@ -59,6 +62,7 @@ if (import.meta.url === directRunUrl) {
   const server = buildServer({
     runCollection: runCollectionJob,
     runDailyDigest: runDailyDigestJob,
+    runScheduledDigest: runScheduledDigestJob,
     createStore: () => createDatabaseStore(config.database),
     enableJobEndpoints: config.runtime.enableJobEndpoints,
     requireSlackSignature: config.runtime.requireSlackSignature,

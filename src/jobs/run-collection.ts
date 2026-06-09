@@ -93,7 +93,8 @@ export async function collectIntel(input: CollectIntelInput): Promise<Collection
             signalType: signal.signalType,
             sourceUrls: signal.sourceUrls,
             previousSimilarCount,
-            competitorSimilarityScore: competitor.similarityScore
+            competitorSimilarityScore: competitor.similarityScore,
+            competitorDomain: competitor.canonicalDomain
           });
           if (!shouldAlert(scores, input.alertThreshold)) {
             continue;
@@ -101,7 +102,7 @@ export async function collectIntel(input: CollectIntelInput): Promise<Collection
           const scoredSignal = { ...signal, ...scores };
           const result = await input.store.recordSignal({
             signal: scoredSignal,
-            uniqueKey: uniqueSignalKey(competitor.id, scoredSignal.signalType, scoredSignal.claim, scoredSignal.sourceUrls[0])
+            uniqueKey: uniqueSignalKey(competitor.id, scoredSignal.signalType, scoredSignal.claim)
           });
           if (result.created) {
             storedSignals += 1;
@@ -152,10 +153,14 @@ function pageToBody(page: ExtractedPage): string {
   return [page.excerpts.join("\n"), page.fullContent ?? ""].filter(Boolean).join("\n\n");
 }
 
-function uniqueSignalKey(competitorId: string, signalType: string, claim: string, sourceUrl: string | undefined): string {
+function uniqueSignalKey(competitorId: string, signalType: string, claim: string): string {
   return createHash("sha256")
-    .update([competitorId, signalType, claim.toLowerCase(), sourceUrl ?? ""].join("|"))
+    .update([competitorId, signalType, canonicalClaim(claim)].join("|"))
     .digest("hex");
+}
+
+function canonicalClaim(claim: string): string {
+  return claim.toLowerCase().replace(/\b20\d{2}\b/g, "").replace(/\s+/g, " ").trim();
 }
 
 async function closeStore(store: Store): Promise<void> {

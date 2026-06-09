@@ -11,8 +11,10 @@ The bot is built as a small TypeScript service that can run on Google Cloud Run.
 - Normalizes fetched source snapshots into stable hashes.
 - Extracts deterministic intel signals such as product launches, customer wins, pricing changes, integrations, funding, and hiring signals.
 - Scores every signal across relevance, novelty, confidence, and impact.
+- Scores source quality so official, trusted, general, and weak sources read differently.
+- Deduplicates repeat signals and merges new source URLs into the existing signal.
 - Renders high-signal Slack alerts and daily digest messages.
-- Lets leaders manage monitoring from Slack with `/intel` commands.
+- Lets leaders manage monitoring, approvals, battlecards, and digest timing from Slack with `/intel` commands.
 - Exposes Cloud Scheduler friendly job endpoints.
 
 ## Architecture
@@ -50,9 +52,10 @@ Job endpoints:
 ```bash
 curl -X POST http://localhost:8080/jobs/collect
 curl -X POST http://localhost:8080/jobs/daily-digest
+curl -X POST http://localhost:8080/jobs/scheduled-digest
 ```
 
-`/jobs/collect` searches Parallel Web, extracts source content, scores signals, and stores new high-signal intel without posting to Slack. `/jobs/daily-digest` runs a fresh collection pass, posts the morning Slack digest, then marks posted signals so duplicates are not sent again.
+`/jobs/collect` searches Parallel Web, extracts source content, scores signals, and stores new high-signal intel without posting to Slack. `/jobs/daily-digest` runs a fresh collection pass, posts the morning Slack digest, then marks posted signals so duplicates are not sent again. `/jobs/scheduled-digest` checks the Slack-configured digest time first, then calls the daily digest only when the current `Europe/Istanbul` time matches.
 
 ## Slack app setup
 
@@ -95,11 +98,25 @@ Interactivity:  https://YOUR-COMPETITOR-INTEL-SLACK-URL/slack/interactions
 /intel list all
 /intel add coupa.com Coupa procurement_ai
 /intel add "SAP Ariba" ariba.com erp_procurement
+/intel suggest newco.ai "NewCo AI" sourcing_automation
+/intel approve newco.ai
+/intel reject newco.ai
+/intel show coupa.com
+/intel schedule
+/intel schedule 08:30
 /intel archive coupa.com
 /intel run now
 ```
 
-`add` accepts the domain and name in either order. Category defaults to `procurement_ai` when omitted. `archive` is a soft delete: the competitor is excluded from future scans, but historical signals stay in Postgres.
+`add` accepts the domain and name in either order. Category defaults to `procurement_ai` when omitted.
+
+`suggest` creates a candidate competitor and posts approval buttons. `approve` moves it into active monitoring. `reject` keeps the audit trail but excludes it from scans.
+
+`show` renders a Slack battlecard with profile fields, best source quality, recent signals, suggested next move, and source links.
+
+`schedule` shows or changes the daily digest time in `Europe/Istanbul`. The scheduler checks every minute, so any valid `HH:mm` can be used without code changes.
+
+`archive` is a soft delete: the competitor is excluded from future scans, but historical signals stay in Postgres.
 
 Supported categories:
 
@@ -171,12 +188,14 @@ Supported seed categories:
 Create a Cloud SQL Postgres database, store secrets in Secret Manager, then deploy the image to Cloud Run. Cloud Scheduler should call:
 
 - `POST /jobs/collect`
-- `POST /jobs/daily-digest`
+- `POST /jobs/scheduled-digest`
 
 Recommended production schedule:
 
 - `competitor-intel-collect`: `0 8 * * *` in `Europe/Istanbul`
-- `competitor-intel-daily-digest`: `0 9 * * *` in `Europe/Istanbul`
+- `competitor-intel-daily-digest`: `* * * * *` in `Europe/Istanbul`
+
+`competitor-intel-daily-digest` intentionally runs every minute. The app stores the real digest time in Postgres through `/intel schedule HH:mm` and only posts when the stored time matches. The default stored time is `09:00`.
 
 The service listens on `PORT`, defaulting to `8080`.
 

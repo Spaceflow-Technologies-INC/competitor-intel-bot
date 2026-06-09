@@ -9,6 +9,7 @@ import type {
   UpsertCompetitorInput,
   UpsertSourceInput
 } from "./memory-store.js";
+import { mapCompetitor, mapSignal, mapSource, type CompetitorRow, type SignalRow, type SourceRow } from "./postgres-mappers.js";
 
 export class PostgresStore implements Store {
   private readonly pool: pg.Pool;
@@ -66,6 +67,12 @@ export class PostgresStore implements Store {
 
       CREATE INDEX IF NOT EXISTS intel_signals_unposted_score_idx
         ON intel_signals (posted_at, composite_score DESC);
+
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
     `);
   }
 
@@ -130,13 +137,34 @@ export class PostgresStore implements Store {
     return result.rows.map(mapSource);
   }
 
+  async listSourcesForCompetitor(competitorId: string): Promise<SourceRecord[]> {
+    const result = await this.pool.query<SourceRow>(
+      "SELECT id, competitor_id, source_type, url, enabled FROM competitor_sources WHERE competitor_id = $1 ORDER BY source_type, url",
+      [competitorId]
+    );
+    return result.rows.map(mapSource);
+  }
+
   async recordSignal(input: RecordSignalInput): Promise<RecordSignalResult> {
     const existing = await this.pool.query<SignalRow>(
       "SELECT * FROM intel_signals WHERE unique_key = $1",
       [input.uniqueKey]
     );
     if (existing.rows[0]) {
-      return { signal: mapSignal(existing.rows[0]), created: false };
+      const existingSignal = mapSignal(existing.rows[0]);
+      const sourceUrls = [...new Set([...existingSignal.sourceUrls, ...input.signal.sourceUrls])];
+      const result = await this.pool.query<SignalRow>(
+        `
+        UPDATE intel_signals SET
+          confidence_score = GREATEST(confidence_score, $2),
+          composite_score = GREATEST(composite_score, $3),
+          source_urls = $4::jsonb
+        WHERE unique_key = $1
+        RETURNING *
+        `,
+        [input.uniqueKey, input.signal.confidenceScore, input.signal.compositeScore, JSON.stringify(sourceUrls)]
+      );
+      return { signal: mapSignal(result.rows[0]), created: false };
     }
     const result = await this.pool.query<SignalRow>(
       `
@@ -177,6 +205,14 @@ export class PostgresStore implements Store {
     return result.rows.map(mapSignal);
   }
 
+  async listSignalsForCompetitor(competitorId: string, limit = 8): Promise<IntelSignal[]> {
+    const result = await this.pool.query<SignalRow>(
+      "SELECT * FROM intel_signals WHERE competitor_id = $1 ORDER BY composite_score DESC, first_seen_at DESC LIMIT $2",
+      [competitorId, limit]
+    );
+    return result.rows.map(mapSignal);
+  }
+
   async markSignalsPosted(ids: string[]): Promise<void> {
     if (ids.length === 0) {
       return;
@@ -192,103 +228,23 @@ export class PostgresStore implements Store {
     return Number.parseInt(result.rows[0]?.count ?? "0", 10);
   }
 
+  async getSetting(key: string): Promise<string | undefined> {
+    const result = await this.pool.query<{ value: string }>("SELECT value FROM app_settings WHERE key = $1", [key]);
+    return result.rows[0]?.value;
+  }
+
+  async setSetting(key: string, value: string): Promise<void> {
+    await this.pool.query(
+      `
+      INSERT INTO app_settings (key, value)
+      VALUES ($1, $2)
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+      `,
+      [key, value]
+    );
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
   }
-}
-
-type CompetitorRow = {
-  id: string;
-  name: string;
-  canonical_domain: string;
-  status: Competitor["status"];
-  category: Competitor["category"];
-  similarity_score: number;
-  monitoring_priority: number;
-};
-
-type SourceRow = {
-  id: string;
-  competitor_id: string;
-  source_type: string;
-  url: string;
-  enabled: boolean;
-};
-
-type SignalRow = {
-  id: string;
-  competitor_id: string | null;
-  candidate_id: string | null;
-  signal_type: IntelSignal["signalType"];
-  claim: string;
-  summary: string;
-  spaceflow_implication: IntelSignal["spaceflowImplication"];
-  suggested_action: IntelSignal["suggestedAction"];
-  relevance_score: number;
-  novelty_score: number;
-  confidence_score: number;
-  impact_score: number;
-  composite_score: number;
-  source_urls: unknown;
-};
-
-function mapCompetitor(row: CompetitorRow | undefined): Competitor {
-  if (!row) {
-    throw new Error("Expected competitor row");
-  }
-  return {
-    id: row.id,
-    name: row.name,
-    canonicalDomain: row.canonical_domain,
-    status: row.status,
-    category: row.category,
-    similarityScore: row.similarity_score,
-    monitoringPriority: row.monitoring_priority
-  };
-}
-
-function mapSource(row: SourceRow | undefined): SourceRecord {
-  if (!row) {
-    throw new Error("Expected source row");
-  }
-  return {
-    id: row.id,
-    competitorId: row.competitor_id,
-    sourceType: row.source_type,
-    url: row.url,
-    enabled: row.enabled
-  };
-}
-
-function mapSignal(row: SignalRow | undefined): IntelSignal {
-  if (!row) {
-    throw new Error("Expected signal row");
-  }
-  return {
-    id: row.id,
-    competitorId: row.competitor_id,
-    candidateId: row.candidate_id,
-    signalType: row.signal_type,
-    claim: row.claim,
-    summary: row.summary,
-    spaceflowImplication: row.spaceflow_implication,
-    suggestedAction: row.suggested_action,
-    relevanceScore: row.relevance_score,
-    noveltyScore: row.novelty_score,
-    confidenceScore: row.confidence_score,
-    impactScore: row.impact_score,
-    compositeScore: row.composite_score,
-    sourceUrls: parseSourceUrls(row.source_urls)
-  };
-}
-
-function parseSourceUrls(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string");
-  }
-  if (typeof value === "string") {
-    const parsed = JSON.parse(value) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
-  }
-  return [];
 }
