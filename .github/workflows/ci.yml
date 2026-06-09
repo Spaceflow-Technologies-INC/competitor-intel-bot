@@ -73,7 +73,7 @@ jobs:
       - name: Deploy public Slack control service
         run: |
           slack_secret_assignments="SLACK_BOT_TOKEN=competitor-intel-slack-bot-token:latest,SLACK_CHANNEL_ID=competitor-intel-slack-channel-id:latest,DATABASE_URL=competitor-intel-database-url:latest,PARALLEL_API_KEY=competitor-intel-parallel-api-key:latest,OPENAI_API_KEY=competitor-intel-openai-api-key:latest,COMPETITOR_SEEDS=competitor-intel-competitor-seeds:latest"
-          slack_secret_flags=(--update-secrets "$slack_secret_assignments" --remove-env-vars SLACK_SIGNING_SECRET)
+          slack_secret_flags=(--update-secrets "$slack_secret_assignments" --remove-secrets SLACK_SIGNING_SECRET)
           if gcloud secrets versions access latest --secret competitor-intel-slack-signing-secret --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
             slack_secret_flags=(--update-secrets "${slack_secret_assignments},SLACK_SIGNING_SECRET=competitor-intel-slack-signing-secret:latest")
           else
