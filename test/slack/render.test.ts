@@ -24,6 +24,17 @@ const signal: IntelSignal = {
   sourceUrls: ["https://zipsource.example/blog/launch", "https://news.example/zipsource-ai"]
 };
 
+const secondSignal: IntelSignal = {
+  ...signal,
+  id: "signal-2",
+  signalType: "customer_win",
+  claim: "customer_win: Acme expands ZipSource rollout",
+  summary: "Acme expanded ZipSource across procurement operations after a supplier pilot.",
+  suggestedAction: "update_battlecard",
+  compositeScore: 0.82,
+  sourceUrls: ["https://zipsource.example/customers/acme"]
+};
+
 describe("Slack renderers", () => {
   it("renders high-signal alerts with source links", () => {
     const message = renderSignalAlertMessage(signal);
@@ -40,20 +51,26 @@ describe("Slack renderers", () => {
     expect(JSON.stringify(message.blocks)).toContain("Supplier agent launched");
   });
 
-  it("renders morning digest as Slack-native signal cards with source links", () => {
+  it("renders morning digest as a two-column Slack table with source links", () => {
     const message = renderMorningIntelDigestMessage(
-      [signal],
+      [signal, secondSignal],
       "# Executive read\n**ZipSource** is pushing supplier agents.\n- Review the battlecard."
     );
 
     const json = JSON.stringify(message.blocks);
-    expect(message.text).toBe("Morning competitor intel: 1 signal");
+    const tableBlock = message.blocks.find((block) => block.type === "table") as { rows: unknown[]; column_settings: unknown[] } | undefined;
+    expect(message.text).toBe("Morning competitor intel: 2 signals");
     expect(message.blocks.some((block) => block.type === "divider")).toBe(true);
+    expect(tableBlock).toBeDefined();
+    expect(tableBlock?.rows).toHaveLength(1);
+    expect((tableBlock?.rows[0] as unknown[] | undefined)).toHaveLength(2);
+    expect(tableBlock?.column_settings).toEqual([{ is_wrapped: true }, { is_wrapped: true }]);
     expect(json).toContain("Executive read");
     expect(json).toContain("ZipSource is pushing supplier agents.");
     expect(json).not.toContain("**");
-    expect(json).toContain("<https://zipsource.example/blog/launch|Source 1: zipsource.example>");
-    expect(json).toContain("<https://news.example/zipsource-ai|Source 2: news.example>");
+    expect(json).toContain("\"type\":\"link\"");
+    expect(json).toContain("\"url\":\"https://zipsource.example/blog/launch\"");
+    expect(json).toContain("\"url\":\"https://zipsource.example/customers/acme\"");
     expect(json).toContain("Next move");
   });
 

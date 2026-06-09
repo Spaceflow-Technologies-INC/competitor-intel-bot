@@ -40,7 +40,7 @@ export function renderMorningIntelDigestMessage(signals: IntelSignal[], summary:
       section(formatExecutiveRead(summary)),
       divider(),
       ...(visibleSignals.length
-        ? renderSignalCards(visibleSignals)
+        ? [signalTableBlock(visibleSignals)]
         : [section("No high-signal competitor movement today.")]),
       context("Scores combine relevance, impact, confidence, and novelty. Review sources before changing battlecards.")
     ]
@@ -72,6 +72,79 @@ function renderSignalCard(
     blocks.push(divider());
   }
   return blocks;
+}
+
+function signalTableBlock(signals: IntelSignal[]): Record<string, unknown> {
+  return {
+    type: "table",
+    column_settings: [{ is_wrapped: true }, { is_wrapped: true }],
+    rows: pairSignals(signals).map(([left, right]) => [
+      signalTableCell(left),
+      right ? signalTableCell(right) : emptyTableCell()
+    ])
+  };
+}
+
+function pairSignals(signals: IntelSignal[]): Array<[IntelSignal, IntelSignal | undefined]> {
+  const rows: Array<[IntelSignal, IntelSignal | undefined]> = [];
+  for (let index = 0; index < signals.length; index += 2) {
+    rows.push([signals[index] as IntelSignal, signals[index + 1]]);
+  }
+  return rows;
+}
+
+function signalTableCell(signal: IntelSignal): Record<string, unknown> {
+  return richTextCell([
+    textElement(cleanClaim(signal), { bold: true }),
+    textElement(`\n${labelSignalType(signal.signalType)} - score ${formatPercent(signal.compositeScore)} - confidence ${formatPercent(signal.confidenceScore)}`),
+    textElement(`\n${plainForRichText(signal.summary, 360)}`),
+    textElement("\nNext move: ", { bold: true }),
+    textElement(labelAction(signal.suggestedAction)),
+    textElement("\nSources: "),
+    ...sourceLinkElements(signal.sourceUrls)
+  ]);
+}
+
+function emptyTableCell(): Record<string, unknown> {
+  return richTextCell([textElement("")]);
+}
+
+function richTextCell(elements: Array<Record<string, unknown>>): Record<string, unknown> {
+  return {
+    type: "rich_text",
+    elements: [
+      {
+        type: "rich_text_section",
+        elements
+      }
+    ]
+  };
+}
+
+function textElement(text: string, style?: { bold?: boolean }): Record<string, unknown> {
+  const element: Record<string, unknown> = { type: "text", text: plainForRichText(text) };
+  if (style) {
+    element.style = style;
+  }
+  return element;
+}
+
+function sourceLinkElements(urls: string[]): Array<Record<string, unknown>> {
+  const visibleUrls = urls.slice(0, MAX_SOURCE_LINKS);
+  if (visibleUrls.length === 0) {
+    return [textElement("no URL captured")];
+  }
+  return visibleUrls.flatMap((url, index) => {
+    const prefix = index === 0 ? "" : "  ";
+    return [
+      textElement(prefix),
+      {
+        type: "link",
+        url: sanitizeUrl(url),
+        text: `Source ${index + 1}`
+      }
+    ];
+  });
 }
 
 function formatExecutiveRead(summary: string): string {
@@ -174,6 +247,10 @@ function plainForMrkdwn(value: string, maxLength = 500): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function plainForRichText(value: string, maxLength = 500): string {
+  return truncate(cleanGeneratedLine(value), maxLength);
 }
 
 function labelSignalType(value: string): string {
