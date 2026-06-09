@@ -14,7 +14,7 @@ The bot is built as a small TypeScript service that can run on Google Cloud Run.
 - Scores source quality so official, trusted, general, and weak sources read differently.
 - Deduplicates repeat signals and merges new source URLs into the existing signal.
 - Renders high-signal Slack alerts and daily digest messages.
-- Lets leaders manage monitoring, approvals, battlecards, and digest timing from Slack with `/competitor` commands.
+- Lets leaders manage monitoring, approvals, battlecards, discovery, and digest timing from Slack with `/competitor` commands.
 - Exposes Cloud Scheduler friendly job endpoints.
 
 ## Architecture
@@ -59,19 +59,18 @@ curl -X POST http://localhost:8080/jobs/scheduled-digest
 
 ## Slack app setup
 
-Create the Slack app from the repository manifest, then point its URLs at the public Slack control service.
+Create the Slack app from the repository manifest.
 
 1. Open [Slack API apps](https://api.slack.com/apps).
 2. Click **Create New App**.
 3. Select **From an app manifest**.
 4. Choose the workspace.
 5. Paste `slack/app-manifest.yml`.
-6. Replace `https://YOUR-COMPETITOR-INTEL-SLACK-URL` with the Cloud Run URL for the public Slack service.
-7. Review and create the app.
-8. Install the app to the workspace.
-9. Copy the bot token into `SLACK_BOT_TOKEN`.
-10. Copy **Basic Information → App Credentials → Signing Secret** into `SLACK_SIGNING_SECRET`.
-11. Invite the bot to the target channel:
+6. Review and create the app.
+7. Install the app to the workspace.
+8. Copy the bot token into `SLACK_BOT_TOKEN`.
+9. Copy **Basic Information → App Credentials → Signing Secret** into `SLACK_SIGNING_SECRET`.
+10. Invite the bot to the target channel:
 
 ```text
 /invite @Competitor Intel Bot
@@ -86,8 +85,8 @@ The manifest enables:
 Slack request URLs:
 
 ```text
-Slash command: https://YOUR-COMPETITOR-INTEL-SLACK-URL/slack/commands
-Interactivity:  https://YOUR-COMPETITOR-INTEL-SLACK-URL/slack/interactions
+Slash command: https://competitor-intel-slack-vsfr73ns4a-ew.a.run.app/slack/commands
+Interactivity:  https://competitor-intel-slack-vsfr73ns4a-ew.a.run.app/slack/interactions
 ```
 
 ### Slack commands
@@ -96,6 +95,8 @@ Interactivity:  https://YOUR-COMPETITOR-INTEL-SLACK-URL/slack/interactions
 /competitor help
 /competitor list
 /competitor list all
+/competitor add "Acme Sourcing"
+/competitor add https://www.linkedin.com/company/acme-sourcing/
 /competitor add coupa.com Coupa procurement_ai
 /competitor add "SAP Ariba" ariba.com erp_procurement
 /competitor suggest newco.ai "NewCo AI" sourcing_automation
@@ -109,6 +110,8 @@ Interactivity:  https://YOUR-COMPETITOR-INTEL-SLACK-URL/slack/interactions
 ```
 
 `add` accepts the domain and name in either order. Category defaults to `procurement_ai` when omitted.
+
+If `add` receives only a company name, or a profile URL such as LinkedIn, the bot uses Parallel Web discovery to find the official website and creates a candidate instead of approving it directly. The candidate is posted with Approve, Reject, and Show profile buttons.
 
 `suggest` creates a candidate competitor and posts approval buttons. `approve` moves it into active monitoring. `reject` keeps the audit trail but excludes it from scans.
 

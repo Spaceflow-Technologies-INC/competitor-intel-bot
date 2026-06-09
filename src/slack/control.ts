@@ -1,8 +1,10 @@
 import { buildSeedSources } from "../competitors/seed.js";
+import type { CompetitorDiscoveryQuery, CompetitorDiscoveryResult } from "../competitors/discovery.js";
 import { getDailyDigestTime } from "../jobs/scheduled-digest.js";
 import { scoreSourceUrl } from "../signals/source-quality.js";
 import type { Competitor, CompetitorCategory, SlackMessage } from "../types.js";
 import type { SourceRecord, Store } from "../storage/memory-store.js";
+import { isDomainLike, isPriorityToken, normalizeDomain, normalizeScheduleTime, parsePriority, shouldDiscoverDomain, titleizeDomain, tokenize } from "./command-utils.js";
 import {
   actions,
   button,
@@ -28,6 +30,7 @@ export type IntelSlashCommandInput = {
   text: string;
   userName?: string;
   triggerDigest?: () => Promise<unknown>;
+  discoverCompetitor?: (query: CompetitorDiscoveryQuery) => Promise<CompetitorDiscoveryResult | undefined>;
 };
 
 const categories: CompetitorCategory[] = [
@@ -46,8 +49,8 @@ export async function handleIntelSlashCommand(input: IntelSlashCommandInput): Pr
   const command = (tokens.shift() ?? "help").toLowerCase();
   if (command === "help" || command === "") return renderHelp();
   if (command === "list") return renderCompetitorList(await input.store.listCompetitors(), tokens.includes("all"));
-  if (command === "add") return upsertCompetitorFromCommand(input.store, tokens, input.userName, "approved");
-  if (command === "suggest" || command === "candidate") return upsertCompetitorFromCommand(input.store, tokens, input.userName, "candidate");
+  if (command === "add") return upsertCompetitorFromCommand(input.store, tokens, input.userName, "approved", input.discoverCompetitor);
+  if (command === "suggest" || command === "candidate") return upsertCompetitorFromCommand(input.store, tokens, input.userName, "candidate", input.discoverCompetitor);
   if (command === "approve") return updateCompetitorStatus(input.store, tokens.join(" "), input.userName, "approved");
   if (command === "reject") return updateCompetitorStatus(input.store, tokens.join(" "), input.userName, "rejected");
   if (command === "archive" || command === "remove") return updateCompetitorStatus(input.store, tokens.join(" "), input.userName, "archived");
@@ -68,10 +71,16 @@ async function upsertCompetitorFromCommand(
   store: Store,
   tokens: string[],
   userName: string | undefined,
-  status: "approved" | "candidate"
+  status: "approved" | "candidate",
+  discoverCompetitor?: (query: CompetitorDiscoveryQuery) => Promise<CompetitorDiscoveryResult | undefined>
 ): Promise<SlackControlResponse> {
   const parsed = parseAddCommand(tokens);
-  if ("error" in parsed) return parsed.error;
+  if ("error" in parsed) {
+    return discoverCompetitor && !tokens.some(isDomainLike) ? discoverCompetitorFromCommand(store, tokens, userName, discoverCompetitor) : parsed.error;
+  }
+  if (shouldDiscoverDomain(parsed.domain)) {
+    return discoverCompetitor ? discoverCompetitorFromCommand(store, tokens, userName, discoverCompetitor) : renderHelp("That looks like a profile or directory link. Use the company website, or configure discovery for LinkedIn/profile URLs.");
+  }
   const competitor = await store.upsertCompetitor({
     name: parsed.name,
     canonicalDomain: parsed.domain,
@@ -87,6 +96,33 @@ async function upsertCompetitorFromCommand(
   return status === "candidate" ? renderCandidateApproval(competitor, actor) : renderCompetitorAdded(competitor, actor);
 }
 
+async function discoverCompetitorFromCommand(
+  store: Store,
+  tokens: string[],
+  userName: string | undefined,
+  discoverCompetitor: (query: CompetitorDiscoveryQuery) => Promise<CompetitorDiscoveryResult | undefined>
+): Promise<SlackControlResponse> {
+  const query = parseDiscoveryCommand(tokens);
+  if (!query.rawQuery) return renderHelp("Give me a company name, website, or LinkedIn company URL, for example: `/competitor add \"Acme Sourcing\"`.");
+  const discovered = await discoverCompetitor(query);
+  if (!discovered) return renderHelp(`Could not confidently discover an official website for: ${query.rawQuery}`);
+  const competitor = await store.upsertCompetitor({
+    name: discovered.name,
+    canonicalDomain: discovered.canonicalDomain,
+    status: "candidate",
+    category: discovered.category,
+    similarityScore: discovered.confidence,
+    monitoringPriority: query.priority ?? 1
+  });
+  for (const source of buildSeedSources({ name: competitor.name, domain: competitor.canonicalDomain, category: competitor.category })) {
+    await store.upsertSource({ competitorId: competitor.id, sourceType: source.sourceType, url: source.url, enabled: true });
+  }
+  for (const evidenceUrl of discovered.evidenceUrls.filter((url) => !url.includes(competitor.canonicalDomain)).slice(0, 3)) {
+    await store.upsertSource({ competitorId: competitor.id, sourceType: "discovery", url: evidenceUrl, enabled: true });
+  }
+  return renderCandidateApproval(competitor, userName ? ` by ${userName}` : "", discovered);
+}
+
 function renderCompetitorAdded(competitor: Competitor, actor: string): SlackControlResponse {
   return controlResponse({
     responseType: "in_channel",
@@ -99,13 +135,13 @@ function renderCompetitorAdded(competitor: Competitor, actor: string): SlackCont
   });
 }
 
-function renderCandidateApproval(competitor: Competitor, actor: string): SlackControlResponse {
+function renderCandidateApproval(competitor: Competitor, actor: string, discovery?: CompetitorDiscoveryResult): SlackControlResponse {
   return controlResponse({
     responseType: "in_channel",
     text: `${competitor.name} is waiting for competitor monitoring approval${actor}.`,
     blocks: [
       header("Competitor candidate"),
-      fields([["Name", competitor.name], ["Domain", `<https://${competitor.canonicalDomain}|${competitor.canonicalDomain}>`], ["Category", competitor.category], ["Priority", `P${competitor.monitoringPriority}`]]),
+      fields([["Name", competitor.name], ["Domain", `<https://${competitor.canonicalDomain}|${competitor.canonicalDomain}>`], ["Category", competitor.category], ["Priority", `P${competitor.monitoringPriority}`], ["Confidence", discovery ? formatPercent(discovery.confidence) : formatPercent(competitor.similarityScore)]]),
       context(`Suggested${actor}. Approve to include it in monitoring, or reject to keep the history but stop scans.`),
       actions([
         button("Approve", "intel_approve_candidate", `approve ${competitor.canonicalDomain}`, "primary"),
@@ -203,6 +239,13 @@ function parseAddCommand(tokens: string[]): { name: string; domain: string; cate
   return { name: name || titleizeDomain(tokens[domainIndex] ?? ""), domain: normalizeDomain(tokens[domainIndex] ?? ""), category, priority: parsePriority(tokens) ?? 1 };
 }
 
+function parseDiscoveryCommand(tokens: string[]): CompetitorDiscoveryQuery {
+  const category = tokens.find(isCategory);
+  const priority = parsePriority(tokens);
+  const rawQuery = tokens.filter((token) => !isCategory(token) && !isPriorityToken(token)).join(" ").trim();
+  return { rawQuery, ...(category ? { category } : {}), ...(priority ? { priority } : {}) };
+}
+
 function renderCompetitorList(competitors: Competitor[], includeAll: boolean): SlackControlResponse {
   const visible = competitors.filter((competitor) => includeAll || activeStatuses.has(competitor.status));
   if (visible.length === 0) return renderHelp("No active competitors yet.");
@@ -215,7 +258,7 @@ function renderCompetitorList(competitors: Competitor[], includeAll: boolean): S
 }
 
 function renderHelp(prefix?: string): SlackControlResponse {
-  const examples = ["`/competitor list`", "`/competitor add coupa.com Coupa procurement_ai`", "`/competitor suggest newco.ai NewCo procurement_ai`", "`/competitor approve newco.ai`", "`/competitor show coupa.com`", "`/competitor schedule 08:30`", "`/competitor archive coupa.com`", "`/competitor run now`"].join("\n");
+  const examples = ["`/competitor list`", "`/competitor add \"Acme Sourcing\"`", "`/competitor add https://www.linkedin.com/company/acme-sourcing/`", "`/competitor add coupa.com Coupa procurement_ai`", "`/competitor suggest newco.ai NewCo procurement_ai`", "`/competitor approve newco.ai`", "`/competitor show coupa.com`", "`/competitor schedule 08:30`", "`/competitor archive coupa.com`", "`/competitor run now`"].join("\n");
   const blocks = [header("Competitor Intel control"), section([prefix, "Manage monitoring from Slack without code changes.", examples].filter(Boolean).join("\n\n")), section(`Categories: ${categories.map((category) => `\`${category}\``).join(", ")}`), defaultActions()];
   return controlResponse({ responseType: "ephemeral", text: prefix ?? "Competitor Intel commands", blocks });
 }
@@ -235,48 +278,8 @@ function controlResponse(input: { responseType: SlackControlResponse["response_t
   return { response_type: input.responseType, text: input.text, blocks: input.blocks };
 }
 
-function tokenize(text: string): string[] {
-  return [...text.matchAll(/"([^"]+)"|'([^']+)'|(\S+)/g)].map((match) => match[1] ?? match[2] ?? match[3] ?? "").filter(Boolean);
-}
-
 function isCategory(value: string): value is CompetitorCategory {
   return categories.includes(value as CompetitorCategory);
-}
-
-function isDomainLike(value: string): boolean {
-  try {
-    return normalizeDomain(value).includes(".");
-  } catch {
-    return false;
-  }
-}
-
-function normalizeDomain(value: string): string {
-  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
-  return new URL(withProtocol).hostname.replace(/^www\./i, "").toLowerCase();
-}
-
-function parsePriority(tokens: string[]): number | undefined {
-  const token = tokens.find(isPriorityToken);
-  if (!token) return undefined;
-  return Number.parseInt(token.toLowerCase().replace(/^priority=/, "").replace(/^p/, ""), 10);
-}
-
-function isPriorityToken(token: string): boolean {
-  return /^p[1-9]$/i.test(token) || /^priority=[1-9]$/i.test(token);
-}
-
-function titleizeDomain(domain: string): string {
-  return normalizeDomain(domain).split(".")[0]?.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) ?? domain;
-}
-
-function normalizeScheduleTime(value: string): string | undefined {
-  const match = value.match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return undefined;
-  const hour = Number.parseInt(match[1] ?? "", 10);
-  const minute = Number.parseInt(match[2] ?? "", 10);
-  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour > 23 || minute > 59) return undefined;
-  return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
 }
 
 function defaultActions(): Record<string, unknown> {

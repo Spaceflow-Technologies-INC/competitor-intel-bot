@@ -14,9 +14,9 @@ features:
     always_online: false
   slash_commands:
     - command: /competitor
-      url: https://YOUR-COMPETITOR-INTEL-SLACK-URL/slack/commands
+      url: https://competitor-intel-slack-vsfr73ns4a-ew.a.run.app/slack/commands
       description: Manage competitor monitoring from Slack.
-      usage_hint: list | suggest newco.ai NewCo procurement_ai | approve newco.ai | show coupa.com | schedule 09:00 | run now
+      usage_hint: list | add "Acme Sourcing" | add https://www.linkedin.com/company/acme-sourcing/ | approve newco.ai | show coupa.com
       should_escape: false
 
 oauth_config:
@@ -28,7 +28,7 @@ oauth_config:
 settings:
   interactivity:
     is_enabled: true
-    request_url: https://YOUR-COMPETITOR-INTEL-SLACK-URL/slack/interactions
+    request_url: https://competitor-intel-slack-vsfr73ns4a-ew.a.run.app/slack/interactions
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false

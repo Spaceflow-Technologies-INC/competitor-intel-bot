@@ -147,7 +147,7 @@ describe("server", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ response_type: "ephemeral" });
+    expect(response.json()).toMatchObject({ response_type: "ephemeral", replace_original: true });
     expect(response.body).toContain("coupa.com");
   });
 });
