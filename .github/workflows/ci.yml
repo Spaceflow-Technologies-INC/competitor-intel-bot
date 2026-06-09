@@ -1,9 +1,23 @@
-name: CI
+name: CI/CD
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GCP_PROJECT_ID: polar-land-465511-j7
+  GCP_REGION: europe-west1
+  GCP_WIF_PROVIDER: projects/795678293866/locations/global/workloadIdentityPools/github-pool/providers/spaceflow-provider
+  GCP_DEPLOY_SERVICE_ACCOUNT: github-actions-sa@polar-land-465511-j7.iam.gserviceaccount.com
+  GCP_BUILD_SERVICE_ACCOUNT: projects/polar-land-465511-j7/serviceAccounts/github-actions-sa@polar-land-465511-j7.iam.gserviceaccount.com
+  CLOUD_RUN_SERVICE: competitor-intel-bot
+  CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT: competitor-intel-bot@polar-land-465511-j7.iam.gserviceaccount.com
+  CLOUD_SQL_INSTANCE: polar-land-465511-j7:europe-west1:pr-logger-db
 
 jobs:
   test:
@@ -19,3 +33,48 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run build
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: competitor-intel-bot-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          version: ">= 571.0.0"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "$CLOUD_RUN_SERVICE" \
+            --source . \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --service-account "$CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT" \
+            --build-service-account "$GCP_BUILD_SERVICE_ACCOUNT" \
+            --set-cloudsql-instances "$CLOUD_SQL_INSTANCE" \
+            --cpu 1 \
+            --memory 512Mi \
+            --max-instances 100 \
+            --no-allow-unauthenticated
+      - name: Verify Cloud Run health
+        run: |
+          service_url="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --format='value(status.url)')"
+          token="$(gcloud auth print-identity-token)"
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${token}" \
+            "${service_url}/ping"
