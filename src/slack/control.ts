@@ -5,6 +5,7 @@ import { scoreSourceUrl } from "../signals/source-quality.js";
 import type { Competitor, CompetitorCategory, SlackMessage } from "../types.js";
 import type { SourceRecord, Store } from "../storage/memory-store.js";
 import { isDomainLike, isPriorityToken, normalizeDomain, normalizeScheduleTime, parsePriority, shouldDiscoverDomain, titleizeDomain, tokenize } from "./command-utils.js";
+import { deleteCompetitorFromCommand, findCompetitor, updateCompetitorStatus } from "./competitor-status.js";
 import {
   actions,
   button,
@@ -54,6 +55,7 @@ export async function handleIntelSlashCommand(input: IntelSlashCommandInput): Pr
   if (command === "approve") return updateCompetitorStatus(input.store, tokens.join(" "), input.userName, "approved");
   if (command === "reject") return updateCompetitorStatus(input.store, tokens.join(" "), input.userName, "rejected");
   if (command === "archive" || command === "remove") return updateCompetitorStatus(input.store, tokens.join(" "), input.userName, "archived");
+  if (command === "delete" || command === "sil") return deleteCompetitorFromCommand(input.store, tokens.join(" "), input.userName);
   if (command === "show" || command === "battlecard") return renderBattlecard(input.store, tokens.join(" "));
   if (command === "schedule") return handleScheduleCommand(input.store, tokens);
   if (command === "run" && (tokens[0]?.toLowerCase() === "now" || tokens.length === 0)) {
@@ -146,29 +148,9 @@ function renderCandidateApproval(competitor: Competitor, actor: string, discover
       actions([
         button("Approve", "intel_approve_candidate", `approve ${competitor.canonicalDomain}`, "primary"),
         button("Reject", "intel_reject_candidate", `reject ${competitor.canonicalDomain}`, "danger"),
-        button("Show profile", "intel_show_candidate", `show ${competitor.canonicalDomain}`)
+        button("Show profile", "intel_show_candidate", `show ${competitor.canonicalDomain}`),
+        button("Delete", "intel_delete_candidate", `delete ${competitor.canonicalDomain}`, "danger")
       ])
-    ]
-  });
-}
-
-async function updateCompetitorStatus(
-  store: Store,
-  query: string,
-  userName: string | undefined,
-  status: "approved" | "rejected" | "archived"
-): Promise<SlackControlResponse> {
-  const competitor = findCompetitor(await store.listCompetitors(), query);
-  if (!competitor) return renderHelp(`Could not find competitor: ${query || "(empty)"}`);
-  const updated = await store.updateCompetitorStatus({ id: competitor.id, status });
-  const actor = userName ? ` by ${userName}` : "";
-  return controlResponse({
-    responseType: "in_channel",
-    text: `${updated.name} ${status}${actor}.`,
-    blocks: [
-      header(status === "approved" ? "Competitor approved" : status === "rejected" ? "Competitor rejected" : "Competitor archived"),
-      fields([["Name", updated.name], ["Domain", `<https://${updated.canonicalDomain}|${updated.canonicalDomain}>`], ["Status", updated.status], ["History", "Signals kept"]]),
-      context(`${labelValue(status)}${actor}. Existing history stays available in battlecards.`)
     ]
   });
 }
@@ -186,7 +168,7 @@ async function renderBattlecard(store: Store, query: string): Promise<SlackContr
     divider(),
     ...renderBattlecardSignals(signals),
     renderSourceSummary(sources, competitor.canonicalDomain),
-    actions([button("Run scan", "intel_run_now", "run now", "primary"), button("Archive", "intel_archive", `archive ${competitor.canonicalDomain}`, "danger")])
+    actions([button("Run scan", "intel_run_now", "run now", "primary"), button("Archive", "intel_archive", `archive ${competitor.canonicalDomain}`), button("Delete", "intel_delete", `delete ${competitor.canonicalDomain}`, "danger")])
   ];
   return controlResponse({ responseType: "ephemeral", text: `${competitor.name} battlecard`, blocks });
 }
@@ -258,20 +240,13 @@ function renderCompetitorList(competitors: Competitor[], includeAll: boolean): S
 }
 
 function renderHelp(prefix?: string): SlackControlResponse {
-  const examples = ["`/competitor list`", "`/competitor add \"Acme Sourcing\"`", "`/competitor add https://www.linkedin.com/company/acme-sourcing/`", "`/competitor add coupa.com Coupa procurement_ai`", "`/competitor suggest newco.ai NewCo procurement_ai`", "`/competitor approve newco.ai`", "`/competitor show coupa.com`", "`/competitor schedule 08:30`", "`/competitor archive coupa.com`", "`/competitor run now`"].join("\n");
+  const examples = ["`/competitor list`", "`/competitor add \"Acme Sourcing\"`", "`/competitor add https://www.linkedin.com/company/acme-sourcing/`", "`/competitor add coupa.com Coupa procurement_ai`", "`/competitor suggest newco.ai NewCo procurement_ai`", "`/competitor approve newco.ai`", "`/competitor show coupa.com`", "`/competitor schedule 08:30`", "`/competitor archive coupa.com`", "`/competitor delete coupa.com`", "`/competitor run now`"].join("\n");
   const blocks = [header("Competitor Intel control"), section([prefix, "Manage monitoring from Slack without code changes.", examples].filter(Boolean).join("\n\n")), section(`Categories: ${categories.map((category) => `\`${category}\``).join(", ")}`), defaultActions()];
   return controlResponse({ responseType: "ephemeral", text: prefix ?? "Competitor Intel commands", blocks });
 }
 
 function renderUnknownCategory(value: string): SlackControlResponse {
   return renderHelp(`Unknown category: ${value}. Use one of: ${categories.join(", ")}.`);
-}
-
-function findCompetitor(competitors: Competitor[], query: string): Competitor | undefined {
-  const trimmed = query.trim().toLowerCase();
-  if (!trimmed) return undefined;
-  const domain = isDomainLike(trimmed) ? normalizeDomain(trimmed) : "";
-  return competitors.find((competitor) => competitor.canonicalDomain === domain || competitor.name.toLowerCase() === trimmed || competitor.name.toLowerCase().includes(trimmed));
 }
 
 function controlResponse(input: { responseType: SlackControlResponse["response_type"]; text: string; blocks: SlackControlResponse["blocks"] }): SlackControlResponse {

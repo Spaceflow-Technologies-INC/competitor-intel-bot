@@ -25,6 +25,49 @@ describe("MemoryStore", () => {
     await expect(store.listEnabledSources()).resolves.toHaveLength(1);
   });
 
+  it("deletes a competitor and keeps historical signals orphaned", async () => {
+    const store = new MemoryStore();
+    const competitor = await store.upsertCompetitor({
+      name: "ZipSource",
+      canonicalDomain: "zipsource.example",
+      status: "approved",
+      category: "procurement_ai",
+      similarityScore: 0.9,
+      monitoringPriority: 1
+    });
+    await store.upsertSource({
+      competitorId: competitor.id,
+      sourceType: "homepage",
+      url: "https://zipsource.example",
+      enabled: true
+    });
+    await store.recordSignal({
+      uniqueKey: "zip-signal",
+      signal: {
+        id: "signal-zip",
+        competitorId: competitor.id,
+        candidateId: null,
+        signalType: "product_launch",
+        claim: "product_launch: ZipSource launches",
+        summary: "ZipSource launched a sourcing product.",
+        spaceflowImplication: "product_gap",
+        suggestedAction: "review_product_gap",
+        relevanceScore: 0.8,
+        noveltyScore: 1,
+        confidenceScore: 0.85,
+        impactScore: 0.9,
+        compositeScore: 0.88,
+        sourceUrls: ["https://zipsource.example/blog"]
+      }
+    });
+
+    await store.deleteCompetitor(competitor.id);
+
+    await expect(store.listCompetitors()).resolves.toHaveLength(0);
+    await expect(store.listEnabledSources()).resolves.toHaveLength(0);
+    await expect(store.listUnpostedSignals()).resolves.toMatchObject([{ competitorId: null }]);
+  });
+
   it("merges duplicate signals instead of losing additional source URLs", async () => {
     const store = new MemoryStore();
     const baseSignal = {

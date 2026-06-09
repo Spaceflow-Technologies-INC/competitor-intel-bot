@@ -72,6 +72,31 @@ describe("Slack intel control", () => {
     await expect(store.listCompetitors()).resolves.toMatchObject([{ status: "archived" }]);
   });
 
+  it("deletes a competitor from Slack when it should be fully removed", async () => {
+    const store = new MemoryStore();
+    const competitor = await store.upsertCompetitor({
+      name: "Coupa",
+      canonicalDomain: "coupa.com",
+      status: "approved",
+      category: "procurement_ai",
+      similarityScore: 0.82,
+      monitoringPriority: 1
+    });
+    await store.upsertSource({
+      competitorId: competitor.id,
+      sourceType: "homepage",
+      url: "https://coupa.com",
+      enabled: true
+    });
+
+    const response = await handleIntelSlashCommand({ store, text: "delete coupa.com", userName: "ceo" });
+
+    expect(response.response_type).toBe("in_channel");
+    expect(response.text).toContain("deleted");
+    await expect(store.listCompetitors()).resolves.toHaveLength(0);
+    await expect(store.listEnabledSources()).resolves.toHaveLength(0);
+  });
+
   it("starts a manual digest run without waiting for the scan to finish", async () => {
     const store = new MemoryStore();
     const triggerDigest = vi.fn(async () => ({ postedSignals: 0 }));
@@ -199,6 +224,7 @@ describe("Slack intel control", () => {
     expect(response.response_type).toBe("ephemeral");
     expect(response.text).toContain("Coupa battlecard");
     expect(json).toContain("Battlecard");
+    expect(json).toContain("Delete");
     expect(json).toContain("Pricing change");
     expect(json).toContain("update battlecard");
     expect(json).toContain("Official");
