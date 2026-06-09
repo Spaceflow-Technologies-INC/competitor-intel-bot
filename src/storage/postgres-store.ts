@@ -83,14 +83,7 @@ export class PostgresStore implements Store {
         updated_at = NOW()
       RETURNING id, name, canonical_domain, status, category, similarity_score, monitoring_priority
       `,
-      [
-        input.name,
-        input.canonicalDomain,
-        input.status,
-        input.category,
-        input.similarityScore,
-        input.monitoringPriority
-      ]
+      [input.name, input.canonicalDomain, input.status, input.category, input.similarityScore, input.monitoringPriority]
     );
     return mapCompetitor(result.rows[0]);
   }
@@ -100,6 +93,18 @@ export class PostgresStore implements Store {
       "SELECT id, name, canonical_domain, status, category, similarity_score, monitoring_priority FROM competitors ORDER BY name"
     );
     return result.rows.map(mapCompetitor);
+  }
+
+  async updateCompetitorStatus(input: { id: string; status: Competitor["status"] }): Promise<Competitor> {
+    const result = await this.pool.query<CompetitorRow>(
+      `
+      UPDATE competitors SET status = $2, updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, name, canonical_domain, status, category, similarity_score, monitoring_priority
+      `,
+      [input.id, input.status]
+    );
+    return mapCompetitor(result.rows[0]);
   }
 
   async upsertSource(input: UpsertSourceInput): Promise<SourceRecord> {

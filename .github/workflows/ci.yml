@@ -16,6 +16,7 @@ env:
   GCP_DEPLOY_SERVICE_ACCOUNT: github-actions-sa@polar-land-465511-j7.iam.gserviceaccount.com
   GCP_BUILD_SERVICE_ACCOUNT: projects/polar-land-465511-j7/serviceAccounts/github-actions-sa@polar-land-465511-j7.iam.gserviceaccount.com
   CLOUD_RUN_SERVICE: competitor-intel-bot
+  CLOUD_RUN_SLACK_SERVICE: competitor-intel-slack
   CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT: competitor-intel-bot@polar-land-465511-j7.iam.gserviceaccount.com
   CLOUD_SQL_INSTANCE: polar-land-465511-j7:europe-west1:pr-logger-db
 
@@ -63,10 +64,33 @@ jobs:
             --service-account "$CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT" \
             --build-service-account "$GCP_BUILD_SERVICE_ACCOUNT" \
             --set-cloudsql-instances "$CLOUD_SQL_INSTANCE" \
+            --set-env-vars NODE_ENV=production,OPENAI_MODEL=gpt-5.4-mini,DAILY_DIGEST_HOUR_UTC=6,WEEKLY_DIGEST_DAY_UTC=1,ALERT_SCORE_THRESHOLD=0.75,ENABLE_JOB_ENDPOINTS=true,REQUIRE_SLACK_SIGNATURE=false \
+            --update-secrets SLACK_BOT_TOKEN=competitor-intel-slack-bot-token:latest,SLACK_CHANNEL_ID=competitor-intel-slack-channel-id:latest,DATABASE_URL=competitor-intel-database-url:latest,PARALLEL_API_KEY=competitor-intel-parallel-api-key:latest,OPENAI_API_KEY=competitor-intel-openai-api-key:latest,COMPETITOR_SEEDS=competitor-intel-competitor-seeds:latest \
             --cpu 1 \
             --memory 512Mi \
             --max-instances 100 \
             --no-allow-unauthenticated
+      - name: Deploy public Slack control service
+        run: |
+          slack_secret_assignments="SLACK_BOT_TOKEN=competitor-intel-slack-bot-token:latest,SLACK_CHANNEL_ID=competitor-intel-slack-channel-id:latest,DATABASE_URL=competitor-intel-database-url:latest,PARALLEL_API_KEY=competitor-intel-parallel-api-key:latest,OPENAI_API_KEY=competitor-intel-openai-api-key:latest,COMPETITOR_SEEDS=competitor-intel-competitor-seeds:latest"
+          if gcloud secrets describe competitor-intel-slack-signing-secret --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
+            slack_secret_assignments="${slack_secret_assignments},SLACK_SIGNING_SECRET=competitor-intel-slack-signing-secret:latest"
+          else
+            echo "competitor-intel-slack-signing-secret is missing; Slack routes will stay locked."
+          fi
+          gcloud run deploy "$CLOUD_RUN_SLACK_SERVICE" \
+            --source . \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --service-account "$CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT" \
+            --build-service-account "$GCP_BUILD_SERVICE_ACCOUNT" \
+            --set-cloudsql-instances "$CLOUD_SQL_INSTANCE" \
+            --set-env-vars NODE_ENV=production,OPENAI_MODEL=gpt-5.4-mini,DAILY_DIGEST_HOUR_UTC=6,WEEKLY_DIGEST_DAY_UTC=1,ALERT_SCORE_THRESHOLD=0.75,ENABLE_JOB_ENDPOINTS=false,REQUIRE_SLACK_SIGNATURE=true \
+            --update-secrets "$slack_secret_assignments" \
+            --cpu 1 \
+            --memory 512Mi \
+            --max-instances 20 \
+            --allow-unauthenticated
       - name: Verify Cloud Run revision
         run: |
           latest_ready="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
@@ -79,3 +103,13 @@ jobs:
             --format='value(status.latestCreatedRevisionName)')"
           test "$latest_ready" = "$latest_created"
           echo "Ready revision: ${latest_ready}"
+          slack_ready="$(gcloud run services describe "$CLOUD_RUN_SLACK_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --format='value(status.latestReadyRevisionName)')"
+          slack_created="$(gcloud run services describe "$CLOUD_RUN_SLACK_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --format='value(status.latestCreatedRevisionName)')"
+          test "$slack_ready" = "$slack_created"
+          echo "Slack ready revision: ${slack_ready}"
