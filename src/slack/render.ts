@@ -40,7 +40,7 @@ export function renderMorningIntelDigestMessage(signals: IntelSignal[], summary:
       section(formatExecutiveRead(summary)),
       divider(),
       ...(visibleSignals.length
-        ? [signalTableBlock(visibleSignals)]
+        ? renderTwoColumnSignalRows(visibleSignals)
         : [section("No high-signal competitor movement today.")]),
       context("Scores combine relevance, impact, confidence, and novelty. Review sources before changing battlecards.")
     ]
@@ -74,15 +74,17 @@ function renderSignalCard(
   return blocks;
 }
 
-function signalTableBlock(signals: IntelSignal[]): Record<string, unknown> {
-  return {
-    type: "table",
-    column_settings: [{ is_wrapped: true }, { is_wrapped: true }],
-    rows: pairSignals(signals).map(([left, right]) => [
-      signalTableCell(left),
-      right ? signalTableCell(right) : emptyTableCell()
-    ])
-  };
+function renderTwoColumnSignalRows(signals: IntelSignal[]): Array<Record<string, unknown>> {
+  const rows = pairSignals(signals);
+  return rows.flatMap(([left, right], index) => {
+    const blocks = [
+      {
+        type: "section",
+        fields: [signalField(left), right ? signalField(right) : blankField()]
+      }
+    ];
+    return index < rows.length - 1 ? [...blocks, divider()] : blocks;
+  });
 }
 
 function pairSignals(signals: IntelSignal[]): Array<[IntelSignal, IntelSignal | undefined]> {
@@ -93,58 +95,21 @@ function pairSignals(signals: IntelSignal[]): Array<[IntelSignal, IntelSignal | 
   return rows;
 }
 
-function signalTableCell(signal: IntelSignal): Record<string, unknown> {
-  return richTextCell([
-    textElement(cleanClaim(signal), { bold: true }),
-    textElement(`\n${labelSignalType(signal.signalType)} - score ${formatPercent(signal.compositeScore)} - confidence ${formatPercent(signal.confidenceScore)}`),
-    textElement(`\n${plainForRichText(signal.summary, 360)}`),
-    textElement("\nNext move: ", { bold: true }),
-    textElement(labelAction(signal.suggestedAction)),
-    textElement("\nSources: "),
-    ...sourceLinkElements(signal.sourceUrls)
-  ]);
-}
-
-function emptyTableCell(): Record<string, unknown> {
-  return richTextCell([textElement("")]);
-}
-
-function richTextCell(elements: Array<Record<string, unknown>>): Record<string, unknown> {
+function signalField(signal: IntelSignal): Record<string, unknown> {
   return {
-    type: "rich_text",
-    elements: [
-      {
-        type: "rich_text_section",
-        elements
-      }
-    ]
+    type: "mrkdwn",
+    text: [
+      `*${plainForMrkdwn(cleanClaim(signal), 140)}*`,
+      `_${labelSignalType(signal.signalType)} - score ${formatPercent(signal.compositeScore)} - confidence ${formatPercent(signal.confidenceScore)}_`,
+      plainForMrkdwn(signal.summary, 320),
+      `*Next move:* ${plainForMrkdwn(labelAction(signal.suggestedAction), 120)}`,
+      `*Sources:* ${sourceLinks(signal.sourceUrls)}`
+    ].join("\n")
   };
 }
 
-function textElement(text: string, style?: { bold?: boolean }): Record<string, unknown> {
-  const element: Record<string, unknown> = { type: "text", text: plainForRichText(text) };
-  if (style) {
-    element.style = style;
-  }
-  return element;
-}
-
-function sourceLinkElements(urls: string[]): Array<Record<string, unknown>> {
-  const visibleUrls = urls.slice(0, MAX_SOURCE_LINKS);
-  if (visibleUrls.length === 0) {
-    return [textElement("no URL captured")];
-  }
-  return visibleUrls.flatMap((url, index) => {
-    const prefix = index === 0 ? "" : "  ";
-    return [
-      textElement(prefix),
-      {
-        type: "link",
-        url: sanitizeUrl(url),
-        text: `Source ${index + 1}`
-      }
-    ];
-  });
+function blankField(): Record<string, unknown> {
+  return { type: "mrkdwn", text: " " };
 }
 
 function formatExecutiveRead(summary: string): string {
@@ -183,6 +148,12 @@ function sourceLinksBlock(urls: string[]): Record<string, unknown> {
   const sourceLinks = urls.slice(0, MAX_SOURCE_LINKS).map((url, index) => slackLink(url, `Source ${index + 1}: ${domainLabel(url)}`));
   const suffix = urls.length > MAX_SOURCE_LINKS ? ` - ${urls.length - MAX_SOURCE_LINKS} more source${urls.length - MAX_SOURCE_LINKS === 1 ? "" : "s"}` : "";
   return context(sourceLinks.length ? `Sources: ${sourceLinks.join("  ")}${suffix}` : "Sources: no URL captured");
+}
+
+function sourceLinks(urls: string[]): string {
+  const sourceLinks = urls.slice(0, MAX_SOURCE_LINKS).map((url, index) => slackLink(url, `Source ${index + 1}`));
+  const suffix = urls.length > MAX_SOURCE_LINKS ? ` +${urls.length - MAX_SOURCE_LINKS}` : "";
+  return sourceLinks.length ? `${sourceLinks.join(" ")}${suffix}` : "no URL captured";
 }
 
 function slackLink(url: string, label: string): string {
@@ -247,10 +218,6 @@ function plainForMrkdwn(value: string, maxLength = 500): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-}
-
-function plainForRichText(value: string, maxLength = 500): string {
-  return truncate(cleanGeneratedLine(value), maxLength);
 }
 
 function labelSignalType(value: string): string {

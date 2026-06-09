@@ -51,26 +51,23 @@ describe("Slack renderers", () => {
     expect(JSON.stringify(message.blocks)).toContain("Supplier agent launched");
   });
 
-  it("renders morning digest as a two-column Slack table with source links", () => {
+  it("renders morning digest as two-column Slack fields with source links", () => {
     const message = renderMorningIntelDigestMessage(
       [signal, secondSignal],
       "# Executive read\n**ZipSource** is pushing supplier agents.\n- Review the battlecard."
     );
 
     const json = JSON.stringify(message.blocks);
-    const tableBlock = message.blocks.find((block) => block.type === "table") as { rows: unknown[]; column_settings: unknown[] } | undefined;
+    const twoColumnBlock = message.blocks.find((block) => Array.isArray(block.fields) && block.fields.length === 2) as { fields: unknown[] } | undefined;
     expect(message.text).toBe("Morning competitor intel: 2 signals");
     expect(message.blocks.some((block) => block.type === "divider")).toBe(true);
-    expect(tableBlock).toBeDefined();
-    expect(tableBlock?.rows).toHaveLength(1);
-    expect((tableBlock?.rows[0] as unknown[] | undefined)).toHaveLength(2);
-    expect(tableBlock?.column_settings).toEqual([{ is_wrapped: true }, { is_wrapped: true }]);
+    expect(message.blocks.some((block) => block.type === "table")).toBe(false);
+    expect(twoColumnBlock).toBeDefined();
     expect(json).toContain("Executive read");
     expect(json).toContain("ZipSource is pushing supplier agents.");
     expect(json).not.toContain("**");
-    expect(json).toContain("\"type\":\"link\"");
-    expect(json).toContain("\"url\":\"https://zipsource.example/blog/launch\"");
-    expect(json).toContain("\"url\":\"https://zipsource.example/customers/acme\"");
+    expect(json).toContain("<https://zipsource.example/blog/launch|Source 1>");
+    expect(json).toContain("<https://zipsource.example/customers/acme|Source 1>");
     expect(json).toContain("Next move");
   });
 
