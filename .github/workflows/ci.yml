@@ -86,7 +86,7 @@ jobs:
             --service-account "$CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT" \
             --build-service-account "$GCP_BUILD_SERVICE_ACCOUNT" \
             --set-cloudsql-instances "$CLOUD_SQL_INSTANCE" \
-            --set-env-vars NODE_ENV=production,OPENAI_MODEL=gpt-5.4-mini,DAILY_DIGEST_HOUR_UTC=6,WEEKLY_DIGEST_DAY_UTC=1,ALERT_SCORE_THRESHOLD=0.75,ENABLE_JOB_ENDPOINTS=false,REQUIRE_SLACK_SIGNATURE=true \
+            --update-env-vars NODE_ENV=production,OPENAI_MODEL=gpt-5.4-mini,DAILY_DIGEST_HOUR_UTC=6,WEEKLY_DIGEST_DAY_UTC=1,ALERT_SCORE_THRESHOLD=0.75,ENABLE_JOB_ENDPOINTS=false,REQUIRE_SLACK_SIGNATURE=true \
             "${slack_secret_flags[@]}" \
             --cpu 1 \
             --memory 512Mi \
