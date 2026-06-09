@@ -67,13 +67,15 @@ jobs:
             --memory 512Mi \
             --max-instances 100 \
             --no-allow-unauthenticated
-      - name: Verify Cloud Run health
+      - name: Verify Cloud Run revision
         run: |
-          service_url="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+          latest_ready="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
             --project "$GCP_PROJECT_ID" \
             --region "$GCP_REGION" \
-            --format='value(status.url)')"
-          token="$(gcloud auth print-identity-token)"
-          curl --fail --silent --show-error \
-            --header "Authorization: Bearer ${token}" \
-            "${service_url}/ping"
+            --format='value(status.latestReadyRevisionName)')"
+          latest_created="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --format='value(status.latestCreatedRevisionName)')"
+          test "$latest_ready" = "$latest_created"
+          echo "Ready revision: ${latest_ready}"
