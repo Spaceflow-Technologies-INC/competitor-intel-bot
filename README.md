@@ -117,6 +117,25 @@ The bot should be deployed as two Cloud Run services:
 
 The public Slack service rejects all Slack requests unless a valid Slack signing secret is configured.
 
+Add or rotate the Slack signing secret with an interactive shell prompt:
+
+```bash
+read -r -s SLACK_SIGNING_SECRET
+echo
+test -n "$SLACK_SIGNING_SECRET" || { echo "Signing secret is empty"; exit 1; }
+
+if gcloud secrets describe competitor-intel-slack-signing-secret --project polar-land-465511-j7 >/dev/null 2>&1; then
+  printf "%s" "$SLACK_SIGNING_SECRET" | gcloud secrets versions add competitor-intel-slack-signing-secret --project polar-land-465511-j7 --data-file=-
+else
+  printf "%s" "$SLACK_SIGNING_SECRET" | gcloud secrets create competitor-intel-slack-signing-secret --project polar-land-465511-j7 --data-file=-
+fi
+
+gcloud run services update competitor-intel-slack \
+  --project polar-land-465511-j7 \
+  --region europe-west1 \
+  --update-secrets SLACK_SIGNING_SECRET=competitor-intel-slack-signing-secret:latest
+```
+
 ## Required environment
 
 | Variable | Purpose |
