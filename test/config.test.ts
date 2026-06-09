@@ -53,6 +53,19 @@ describe("loadConfig", () => {
     expect(config.optionalApis.openAi?.model).toBe("gpt-5.4-mini");
   });
 
+  it("loads optional Slack control and runtime flags", () => {
+    const config = loadConfig({
+      ...baseEnv,
+      SLACK_SIGNING_SECRET: "signing-secret",
+      ENABLE_JOB_ENDPOINTS: "false",
+      REQUIRE_SLACK_SIGNATURE: "true"
+    });
+
+    expect(config.slack.signingSecret).toBe("signing-secret");
+    expect(config.runtime.enableJobEndpoints).toBe(false);
+    expect(config.runtime.requireSlackSignature).toBe(true);
+  });
+
   it("rejects invalid seed rows", () => {
     expect(() => loadConfig({
       ...baseEnv,

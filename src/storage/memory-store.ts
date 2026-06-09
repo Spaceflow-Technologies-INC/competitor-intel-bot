@@ -34,6 +34,7 @@ export type RecordSignalResult = {
 export interface Store {
   upsertCompetitor(input: UpsertCompetitorInput): Promise<Competitor>;
   listCompetitors(): Promise<Competitor[]>;
+  updateCompetitorStatus(input: { id: string; status: CompetitorStatus }): Promise<Competitor>;
   upsertSource(input: UpsertSourceInput): Promise<SourceRecord>;
   listEnabledSources(): Promise<SourceRecord[]>;
   recordSignal(input: RecordSignalInput): Promise<RecordSignalResult>;
@@ -63,6 +64,16 @@ export class MemoryStore implements Store {
 
   async listCompetitors(): Promise<Competitor[]> {
     return [...this.competitors.values()].map((competitor) => ({ ...competitor }));
+  }
+
+  async updateCompetitorStatus(input: { id: string; status: CompetitorStatus }): Promise<Competitor> {
+    const existing = this.competitors.get(input.id);
+    if (!existing) {
+      throw new Error(`Competitor not found: ${input.id}`);
+    }
+    const competitor = { ...existing, status: input.status };
+    this.competitors.set(competitor.id, competitor);
+    return { ...competitor };
   }
 
   async upsertSource(input: UpsertSourceInput): Promise<SourceRecord> {

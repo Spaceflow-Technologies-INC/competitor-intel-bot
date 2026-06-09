@@ -13,7 +13,10 @@ const envSchema = z.object({
   ALERT_SCORE_THRESHOLD: z.string().default("0.75"),
   PARALLEL_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
-  OPENAI_MODEL: z.string().default("gpt-5.4-mini")
+  OPENAI_MODEL: z.string().default("gpt-5.4-mini"),
+  SLACK_SIGNING_SECRET: z.string().optional(),
+  ENABLE_JOB_ENDPOINTS: z.string().default("true"),
+  REQUIRE_SLACK_SIGNATURE: z.string().default("false")
 });
 
 export type AppConfig = {
@@ -21,6 +24,7 @@ export type AppConfig = {
   slack: {
     botToken: string;
     channelId: string;
+    signingSecret?: string;
   };
   database: {
     url: string;
@@ -32,6 +36,10 @@ export type AppConfig = {
   };
   scoring: {
     alertThreshold: number;
+  };
+  runtime: {
+    enableJobEndpoints: boolean;
+    requireSlackSignature: boolean;
   };
   optionalApis: {
     parallelApiKey?: string;
@@ -62,7 +70,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: parseInteger(parsed.PORT, "PORT"),
     slack: {
       botToken: parsed.SLACK_BOT_TOKEN,
-      channelId: parsed.SLACK_CHANNEL_ID
+      channelId: parsed.SLACK_CHANNEL_ID,
+      ...(parsed.SLACK_SIGNING_SECRET ? { signingSecret: parsed.SLACK_SIGNING_SECRET } : {})
     },
     database: {
       url: parsed.DATABASE_URL
@@ -74,6 +83,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     scoring: {
       alertThreshold: parseNumber(parsed.ALERT_SCORE_THRESHOLD, "ALERT_SCORE_THRESHOLD")
+    },
+    runtime: {
+      enableJobEndpoints: parseBoolean(parsed.ENABLE_JOB_ENDPOINTS, "ENABLE_JOB_ENDPOINTS"),
+      requireSlackSignature: parseBoolean(parsed.REQUIRE_SLACK_SIGNATURE, "REQUIRE_SLACK_SIGNATURE")
     },
     optionalApis
   };
@@ -115,4 +128,14 @@ function parseNumber(value: string, name: string): number {
     throw new Error(`${name} must be a number`);
   }
   return parsed;
+}
+
+function parseBoolean(value: string, name: string): boolean {
+  if (["true", "1", "yes"].includes(value.toLowerCase())) {
+    return true;
+  }
+  if (["false", "0", "no"].includes(value.toLowerCase())) {
+    return false;
+  }
+  throw new Error(`${name} must be a boolean`);
 }

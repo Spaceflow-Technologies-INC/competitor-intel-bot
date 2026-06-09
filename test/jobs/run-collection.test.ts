@@ -52,4 +52,26 @@ describe("collectIntel", () => {
 
     expect(second.storedSignals).toBe(0);
   });
+
+  it("skips archived competitors during collection", async () => {
+    const store = new MemoryStore();
+    await store.upsertCompetitor({
+      name: "Archived",
+      canonicalDomain: "archived.example",
+      status: "archived",
+      category: "procurement_ai",
+      similarityScore: 0.82,
+      monitoringPriority: 1
+    });
+
+    const result = await collectIntel({
+      store,
+      seeds: [],
+      sourceClient,
+      fetchedAt: "2026-06-09T06:00:00.000Z",
+      alertThreshold: 0.75
+    });
+
+    expect(result).toEqual({ processedSignals: 0, storedSignals: 0, postedSignals: 0, errors: 0 });
+  });
 });

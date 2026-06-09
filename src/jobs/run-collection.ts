@@ -19,6 +19,8 @@ export type CollectionResult = {
   errors: number;
 };
 
+const collectableStatuses = new Set(["seeded", "approved", "candidate"]);
+
 export async function runCollectionJob(): Promise<CollectionResult> {
   const config = loadConfig();
   if (!config.optionalApis.parallelApiKey) {
@@ -50,7 +52,9 @@ export async function collectIntel(input: CollectIntelInput): Promise<Collection
   const logger = createLogger();
   await seedCompetitors(input.store, input.seeds);
   const fetchedAt = input.fetchedAt ?? new Date().toISOString();
-  const competitors = await input.store.listCompetitors();
+  const competitors = (await input.store.listCompetitors()).filter((competitor) =>
+    collectableStatuses.has(competitor.status)
+  );
   let processedSignals = 0;
   let storedSignals = 0;
   let errors = 0;
