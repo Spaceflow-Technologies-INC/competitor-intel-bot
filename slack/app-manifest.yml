@@ -16,7 +16,7 @@ features:
     - command: /intel
       url: https://YOUR-COMPETITOR-INTEL-SLACK-URL/slack/commands
       description: Manage competitor monitoring from Slack.
-      usage_hint: list | add coupa.com Coupa procurement_ai | archive coupa.com | run now
+      usage_hint: list | suggest newco.ai NewCo procurement_ai | approve newco.ai | show coupa.com | schedule 09:00 | run now
       should_escape: false
 
 oauth_config:

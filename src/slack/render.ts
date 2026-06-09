@@ -1,4 +1,5 @@
 import type { IntelSignal, SlackMessage } from "../types.js";
+import { summarizeSourceQuality } from "../signals/source-quality.js";
 
 const MAX_DIGEST_SIGNALS = 8;
 const MAX_SOURCE_LINKS = 3;
@@ -63,6 +64,7 @@ function renderSignalCard(
       ["Signal", labelSignalType(signal.signalType)],
       ["Score", formatPercent(signal.compositeScore)],
       ["Confidence", formatPercent(signal.confidenceScore)],
+      ["Source quality", sourceQualityLabel(signal)],
       ["Implication", labelAction(signal.spaceflowImplication)],
       ["Next move", labelAction(signal.suggestedAction)]
     ]),
@@ -102,6 +104,7 @@ function signalField(signal: IntelSignal): Record<string, unknown> {
       `*${plainForMrkdwn(cleanClaim(signal), 140)}*`,
       `_${labelSignalType(signal.signalType)} - score ${formatPercent(signal.compositeScore)} - confidence ${formatPercent(signal.confidenceScore)}_`,
       plainForMrkdwn(signal.summary, 320),
+      `*Source quality:* ${sourceQualityLabel(signal)}`,
       `*Next move:* ${plainForMrkdwn(labelAction(signal.suggestedAction), 120)}`,
       `*Sources:* ${sourceLinks(signal.sourceUrls)}`
     ].join("\n")
@@ -154,6 +157,12 @@ function sourceLinks(urls: string[]): string {
   const sourceLinks = urls.slice(0, MAX_SOURCE_LINKS).map((url, index) => slackLink(url, `Source ${index + 1}`));
   const suffix = urls.length > MAX_SOURCE_LINKS ? ` +${urls.length - MAX_SOURCE_LINKS}` : "";
   return sourceLinks.length ? `${sourceLinks.join(" ")}${suffix}` : "no URL captured";
+}
+
+function sourceQualityLabel(signal: IntelSignal): string {
+  const quality = summarizeSourceQuality(signal.sourceUrls);
+  const dedupe = signal.sourceUrls.length > 1 ? `${signal.sourceUrls.length} sources` : "single source";
+  return `${quality.label} - ${formatPercent(quality.score)} - ${dedupe}`;
 }
 
 function slackLink(url: string, label: string): string {

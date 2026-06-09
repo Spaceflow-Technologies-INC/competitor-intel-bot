@@ -28,6 +28,19 @@ describe("server", () => {
     expect(response.json()).toEqual({ processedSignals: 2, storedSignals: 1, postedSignals: 0, errors: 0 });
   });
 
+  it("runs scheduled digest endpoint when configured", async () => {
+    const server = buildServer({
+      runCollection: async () => ({ processedSignals: 0, storedSignals: 0, postedSignals: 0, errors: 0 }),
+      runDailyDigest: async () => ({ postedSignals: 0 }),
+      runScheduledDigest: async () => ({ postedSignals: 0, skipped: true, scheduledTime: "08:30" })
+    });
+
+    const response = await server.inject({ method: "POST", url: "/jobs/scheduled-digest" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ postedSignals: 0, skipped: true, scheduledTime: "08:30" });
+  });
+
   it("can disable scheduler job endpoints for a public Slack-only service", async () => {
     const server = buildServer({
       runCollection: async () => ({ processedSignals: 2, storedSignals: 1, postedSignals: 0, errors: 0 }),

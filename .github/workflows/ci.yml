@@ -18,6 +18,7 @@ env:
   CLOUD_RUN_SERVICE: competitor-intel-bot
   CLOUD_RUN_SLACK_SERVICE: competitor-intel-slack
   CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT: competitor-intel-bot@polar-land-465511-j7.iam.gserviceaccount.com
+  GCP_SCHEDULER_SERVICE_ACCOUNT: competitor-intel-scheduler@polar-land-465511-j7.iam.gserviceaccount.com
   CLOUD_SQL_INSTANCE: polar-land-465511-j7:europe-west1:pr-logger-db
 
 jobs:
@@ -114,3 +115,40 @@ jobs:
             --format='value(status.latestCreatedRevisionName)')"
           test "$slack_ready" = "$slack_created"
           echo "Slack ready revision: ${slack_ready}"
+      - name: Update Cloud Scheduler jobs
+        run: |
+          worker_url="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --format='value(status.url)')"
+
+          upsert_http_scheduler_job() {
+            local name="$1"
+            local schedule="$2"
+            local path="$3"
+            local uri="${worker_url}${path}"
+            if gcloud scheduler jobs describe "$name" --project "$GCP_PROJECT_ID" --location "$GCP_REGION" >/dev/null 2>&1; then
+              gcloud scheduler jobs update http "$name" \
+                --project "$GCP_PROJECT_ID" \
+                --location "$GCP_REGION" \
+                --schedule "$schedule" \
+                --time-zone Europe/Istanbul \
+                --uri "$uri" \
+                --http-method POST \
+                --oidc-service-account-email "$GCP_SCHEDULER_SERVICE_ACCOUNT" \
+                --oidc-token-audience "$worker_url"
+            else
+              gcloud scheduler jobs create http "$name" \
+                --project "$GCP_PROJECT_ID" \
+                --location "$GCP_REGION" \
+                --schedule "$schedule" \
+                --time-zone Europe/Istanbul \
+                --uri "$uri" \
+                --http-method POST \
+                --oidc-service-account-email "$GCP_SCHEDULER_SERVICE_ACCOUNT" \
+                --oidc-token-audience "$worker_url"
+            fi
+          }
+
+          upsert_http_scheduler_job competitor-intel-collect "0 8 * * *" /jobs/collect
+          upsert_http_scheduler_job competitor-intel-daily-digest "* * * * *" /jobs/scheduled-digest

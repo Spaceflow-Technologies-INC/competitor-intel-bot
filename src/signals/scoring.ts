@@ -1,10 +1,12 @@
 import type { SignalType } from "../types.js";
+import { summarizeSourceQuality } from "./source-quality.js";
 
 export type ScoreSignalInput = {
   signalType: SignalType;
   sourceUrls: string[];
   previousSimilarCount: number;
   competitorSimilarityScore: number;
+  competitorDomain?: string;
 };
 
 export type SignalScores = {
@@ -36,7 +38,7 @@ const impactByType: Record<SignalType, number> = {
 export function scoreSignal(input: ScoreSignalInput): SignalScores {
   const relevanceScore = clamp(input.competitorSimilarityScore);
   const noveltyScore = clamp(1 - input.previousSimilarCount * 0.25);
-  const confidenceScore = confidenceFromSources(input.sourceUrls);
+  const confidenceScore = confidenceFromSources(input.sourceUrls, input.competitorDomain);
   const impactScore = impactByType[input.signalType];
   const compositeScore = clamp(
     0.3 * relevanceScore + 0.25 * impactScore + 0.25 * confidenceScore + 0.2 * noveltyScore
@@ -48,9 +50,10 @@ export function shouldAlert(scores: SignalScores, threshold: number): boolean {
   return scores.compositeScore >= threshold || (scores.impactScore >= 0.85 && scores.confidenceScore >= 0.65);
 }
 
-function confidenceFromSources(urls: string[]): number {
-  const hasPrimary = urls.some((url) => !/third-party|news|medium\.com/i.test(url));
-  return hasPrimary ? 0.85 : 0.55;
+function confidenceFromSources(urls: string[], competitorDomain?: string): number {
+  const quality = summarizeSourceQuality(urls, competitorDomain);
+  const multiSourceBoost = Math.min(0.08, Math.max(0, urls.length - 1) * 0.04);
+  return clamp(quality.score + multiSourceBoost);
 }
 
 function clamp(value: number): number {
