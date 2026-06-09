@@ -162,6 +162,18 @@ describe("Slack intel control", () => {
     await expect(store.getSetting("daily_digest_time")).resolves.toBe("08:30");
   });
 
+  it("uses the /competitor command name in operator guidance", async () => {
+    const store = new MemoryStore();
+
+    const help = await handleIntelSlashCommand({ store, text: "help" });
+    const invalidSchedule = await handleIntelSlashCommand({ store, text: "schedule bad" });
+    const guidance = `${JSON.stringify(help.blocks)} ${JSON.stringify(invalidSchedule.blocks)} ${invalidSchedule.text}`;
+
+    expect(guidance).toContain("/competitor list");
+    expect(guidance).toContain("/competitor schedule 08:30");
+    expect(guidance).not.toContain("/intel");
+  });
+
   it("rejects unknown categories with usable guidance", async () => {
     const store = new MemoryStore();
 

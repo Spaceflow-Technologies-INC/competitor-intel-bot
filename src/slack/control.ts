@@ -162,16 +162,16 @@ async function handleScheduleCommand(store: Store, tokens: string[]): Promise<Sl
     return controlResponse({
       responseType: "ephemeral",
       text: `Morning intel digest is scheduled for ${current} Europe/Istanbul.`,
-      blocks: [header("Digest schedule"), section(`Current schedule: *${current}* Europe/Istanbul\nChange it with \`/intel schedule 08:30\`.`)]
+      blocks: [header("Digest schedule"), section(`Current schedule: *${current}* Europe/Istanbul\nChange it with \`/competitor schedule 08:30\`.`)]
     });
   }
   const normalized = normalizeScheduleTime(requested);
-  if (!normalized) return renderHelp("Schedule must use HH:mm, for example: `/intel schedule 08:30`.");
+  if (!normalized) return renderHelp("Schedule must use HH:mm, for example: `/competitor schedule 08:30`.");
   await store.setSetting("daily_digest_time", normalized);
   return controlResponse({
     responseType: "in_channel",
     text: `Morning intel digest moved to ${normalized} Europe/Istanbul.`,
-    blocks: [header("Digest schedule updated"), fields([["Daily digest", `${normalized} Europe/Istanbul`], ["Control", "`/intel schedule HH:mm`"], ["Manual run", "`/intel run now`"], ["Status", "Saved"]]), context("The scheduler checks every minute and posts only when the stored time matches.")]
+    blocks: [header("Digest schedule updated"), fields([["Daily digest", `${normalized} Europe/Istanbul`], ["Control", "`/competitor schedule HH:mm`"], ["Manual run", "`/competitor run now`"], ["Status", "Saved"]]), context("The scheduler checks every minute and posts only when the stored time matches.")]
   });
 }
 
@@ -192,7 +192,7 @@ function bestSourceQuality(sources: SourceRecord[], competitorDomain: string) {
 
 function parseAddCommand(tokens: string[]): { name: string; domain: string; category: CompetitorCategory; priority: number } | { error: SlackControlResponse } {
   const domainIndex = tokens.findIndex(isDomainLike);
-  if (domainIndex === -1) return { error: renderHelp("Add command needs a domain, for example: `/intel add coupa.com Coupa procurement_ai`.") };
+  if (domainIndex === -1) return { error: renderHelp("Add command needs a domain, for example: `/competitor add coupa.com Coupa procurement_ai`.") };
   const categoryIndex = tokens.findIndex(isCategory);
   if (categoryIndex === -1 && tokens.length >= 3) {
     const last = tokens[tokens.length - 1];
@@ -215,7 +215,7 @@ function renderCompetitorList(competitors: Competitor[], includeAll: boolean): S
 }
 
 function renderHelp(prefix?: string): SlackControlResponse {
-  const examples = ["`/intel list`", "`/intel add coupa.com Coupa procurement_ai`", "`/intel suggest newco.ai NewCo procurement_ai`", "`/intel approve newco.ai`", "`/intel show coupa.com`", "`/intel schedule 08:30`", "`/intel archive coupa.com`", "`/intel run now`"].join("\n");
+  const examples = ["`/competitor list`", "`/competitor add coupa.com Coupa procurement_ai`", "`/competitor suggest newco.ai NewCo procurement_ai`", "`/competitor approve newco.ai`", "`/competitor show coupa.com`", "`/competitor schedule 08:30`", "`/competitor archive coupa.com`", "`/competitor run now`"].join("\n");
   const blocks = [header("Competitor Intel control"), section([prefix, "Manage monitoring from Slack without code changes.", examples].filter(Boolean).join("\n\n")), section(`Categories: ${categories.map((category) => `\`${category}\``).join(", ")}`), defaultActions()];
   return controlResponse({ responseType: "ephemeral", text: prefix ?? "Competitor Intel commands", blocks });
 }
