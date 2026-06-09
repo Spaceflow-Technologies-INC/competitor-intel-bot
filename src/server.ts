@@ -3,9 +3,11 @@ import { pathToFileURL } from "node:url";
 import Fastify, { type FastifyReply } from "fastify";
 
 import { loadConfig } from "./config.js";
+import { discoverCompetitor, type CompetitorDiscoveryQuery, type CompetitorDiscoveryResult } from "./competitors/discovery.js";
 import { runCollectionJob, type CollectionResult } from "./jobs/run-collection.js";
 import { runDailyDigestJob, type DigestResult } from "./jobs/run-digest.js";
 import { runScheduledDigestJob } from "./jobs/scheduled-digest.js";
+import { ParallelClient } from "./sources/parallel-client.js";
 import { handleIntelSlashCommand } from "./slack/control.js";
 import { verifySlackRequest } from "./slack/signature.js";
 import { createStore as createDatabaseStore } from "./storage/index.js";
@@ -16,6 +18,7 @@ export type ServerDeps = {
   runDailyDigest: () => Promise<DigestResult>;
   runScheduledDigest?: () => Promise<DigestResult & { skipped?: boolean; scheduledTime?: string }>;
   createStore?: () => Promise<Store>;
+  discoverCompetitor?: (query: CompetitorDiscoveryQuery) => Promise<CompetitorDiscoveryResult | undefined>;
   slackSigningSecret?: string;
   enableJobEndpoints?: boolean;
   requireSlackSignature?: boolean;
@@ -40,7 +43,7 @@ export function buildServer(deps: ServerDeps) {
     if (!isVerifiedSlackRequest(deps, request.headers, body.rawBody)) {
       return reply.code(401).send({ error: "invalid_slack_signature" });
     }
-    return handleSlackCommand(deps, body.values, reply);
+    return handleSlackCommand(deps, body.values, reply, false);
   });
   server.post("/slack/interactions", async (request, reply) => {
     const body = readFormBody(request.body);
@@ -49,7 +52,7 @@ export function buildServer(deps: ServerDeps) {
     }
     const payload = parseInteractionPayload(body.values.payload);
     const values = payload.userName ? { text: payload.value, user_name: payload.userName } : { text: payload.value };
-    return handleSlackCommand(deps, values, reply);
+    return handleSlackCommand(deps, values, reply, true);
   });
 
   return server;
@@ -59,11 +62,13 @@ const directRunUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
 
 if (import.meta.url === directRunUrl) {
   const config = loadConfig();
+  const discoveryClient = config.optionalApis.parallelApiKey ? new ParallelClient({ apiKey: config.optionalApis.parallelApiKey }) : undefined;
   const server = buildServer({
     runCollection: runCollectionJob,
     runDailyDigest: runDailyDigestJob,
     runScheduledDigest: runScheduledDigestJob,
     createStore: () => createDatabaseStore(config.database),
+    ...(discoveryClient ? { discoverCompetitor: (query) => discoverCompetitor({ ...query, search: discoveryClient.search.bind(discoveryClient) }) } : {}),
     enableJobEndpoints: config.runtime.enableJobEndpoints,
     requireSlackSignature: config.runtime.requireSlackSignature,
     ...(config.slack.signingSecret ? { slackSigningSecret: config.slack.signingSecret } : {})
@@ -84,7 +89,7 @@ function readFormBody(body: unknown): ParsedFormBody {
   return { rawBody: "", values: {} };
 }
 
-async function handleSlackCommand(deps: ServerDeps, values: Record<string, string>, reply: FastifyReply) {
+async function handleSlackCommand(deps: ServerDeps, values: Record<string, string>, reply: FastifyReply, isInteraction: boolean) {
   if (!deps.createStore) {
     return reply.code(503).send({ error: "slack_control_not_configured" });
   }
@@ -95,9 +100,10 @@ async function handleSlackCommand(deps: ServerDeps, values: Record<string, strin
       store,
       text: values.text ?? "help",
       triggerDigest: deps.runDailyDigest,
+      ...(deps.discoverCompetitor ? { discoverCompetitor: deps.discoverCompetitor } : {}),
       ...(userName ? { userName } : {})
     });
-    return reply.send(response);
+    return reply.send(isInteraction ? { ...response, replace_original: true } : response);
   } finally {
     await closeStore(store);
   }

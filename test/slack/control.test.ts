@@ -103,6 +103,60 @@ describe("Slack intel control", () => {
     await expect(store.listCompetitors()).resolves.toMatchObject([{ canonicalDomain: "newco.ai", status: "approved" }]);
   });
 
+  it("discovers a candidate competitor from a plain company name before approval", async () => {
+    const store = new MemoryStore();
+
+    const response = await handleIntelSlashCommand({
+      store,
+      text: 'add "Acme Sourcing"',
+      userName: "ceo",
+      discoverCompetitor: async () => ({
+        name: "Acme Sourcing",
+        canonicalDomain: "acmesourcing.ai",
+        category: "sourcing_automation",
+        confidence: 0.81,
+        evidenceUrls: ["https://acmesourcing.ai", "https://www.linkedin.com/company/acme-sourcing"]
+      })
+    });
+
+    expect(response.response_type).toBe("in_channel");
+    expect(response.text).toContain("waiting for competitor monitoring approval");
+    expect(JSON.stringify(response.blocks)).toContain("acmesourcing.ai");
+    expect(JSON.stringify(response.blocks)).toContain("Approve");
+    expect(await store.listCompetitors()).toMatchObject([
+      {
+        name: "Acme Sourcing",
+        canonicalDomain: "acmesourcing.ai",
+        status: "candidate",
+        category: "sourcing_automation"
+      }
+    ]);
+  });
+
+  it("discovers a candidate competitor from a LinkedIn company URL", async () => {
+    const store = new MemoryStore();
+
+    const response = await handleIntelSlashCommand({
+      store,
+      text: "suggest https://www.linkedin.com/company/acme-sourcing/",
+      discoverCompetitor: async (query) => ({
+        name: "Acme Sourcing",
+        canonicalDomain: "acmesourcing.ai",
+        category: "sourcing_automation",
+        confidence: 0.78,
+        evidenceUrls: [query.rawQuery, "https://acmesourcing.ai"]
+      })
+    });
+
+    expect(response.text).toContain("Acme Sourcing");
+    await expect(store.listCompetitors()).resolves.toMatchObject([
+      {
+        canonicalDomain: "acmesourcing.ai",
+        status: "candidate"
+      }
+    ]);
+  });
+
   it("renders a readable battlecard for one competitor", async () => {
     const store = new MemoryStore();
     const competitor = await store.upsertCompetitor({
@@ -177,7 +231,13 @@ describe("Slack intel control", () => {
   it("rejects unknown categories with usable guidance", async () => {
     const store = new MemoryStore();
 
-    const response = await handleIntelSlashCommand({ store, text: "add wrong.ai WrongBot magic" });
+    const response = await handleIntelSlashCommand({
+      store,
+      text: "add wrong.ai WrongBot magic",
+      discoverCompetitor: async () => {
+        throw new Error("Discovery should not run for direct-domain unknown category errors");
+      }
+    });
 
     expect(response.response_type).toBe("ephemeral");
     expect(response.text).toContain("Unknown category");
