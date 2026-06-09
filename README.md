@@ -14,7 +14,7 @@ The bot is built as a small TypeScript service that can run on Google Cloud Run.
 - Scores source quality so official, trusted, general, and weak sources read differently.
 - Deduplicates repeat signals and merges new source URLs into the existing signal.
 - Renders high-signal Slack alerts and daily digest messages.
-- Lets leaders manage monitoring, approvals, battlecards, and digest timing from Slack with `/intel` commands.
+- Lets leaders manage monitoring, approvals, battlecards, and digest timing from Slack with `/competitor` commands.
 - Exposes Cloud Scheduler friendly job endpoints.
 
 ## Architecture
@@ -80,7 +80,7 @@ Create the Slack app from the repository manifest, then point its URLs at the pu
 The manifest enables:
 
 - `chat:write` for channel reports.
-- `commands` for the `/intel` slash command.
+- `commands` for the `/competitor` slash command.
 - Interactivity for action buttons in command responses.
 
 Slack request URLs:
@@ -93,19 +93,19 @@ Interactivity:  https://YOUR-COMPETITOR-INTEL-SLACK-URL/slack/interactions
 ### Slack commands
 
 ```text
-/intel help
-/intel list
-/intel list all
-/intel add coupa.com Coupa procurement_ai
-/intel add "SAP Ariba" ariba.com erp_procurement
-/intel suggest newco.ai "NewCo AI" sourcing_automation
-/intel approve newco.ai
-/intel reject newco.ai
-/intel show coupa.com
-/intel schedule
-/intel schedule 08:30
-/intel archive coupa.com
-/intel run now
+/competitor help
+/competitor list
+/competitor list all
+/competitor add coupa.com Coupa procurement_ai
+/competitor add "SAP Ariba" ariba.com erp_procurement
+/competitor suggest newco.ai "NewCo AI" sourcing_automation
+/competitor approve newco.ai
+/competitor reject newco.ai
+/competitor show coupa.com
+/competitor schedule
+/competitor schedule 08:30
+/competitor archive coupa.com
+/competitor run now
 ```
 
 `add` accepts the domain and name in either order. Category defaults to `procurement_ai` when omitted.
@@ -195,7 +195,7 @@ Recommended production schedule:
 - `competitor-intel-collect`: `0 8 * * *` in `Europe/Istanbul`
 - `competitor-intel-daily-digest`: `* * * * *` in `Europe/Istanbul`
 
-`competitor-intel-daily-digest` intentionally runs every minute. The app stores the real digest time in Postgres through `/intel schedule HH:mm` and only posts when the stored time matches. The default stored time is `09:00`.
+`competitor-intel-daily-digest` intentionally runs every minute. The app stores the real digest time in Postgres through `/competitor schedule HH:mm` and only posts when the stored time matches. The default stored time is `09:00`.
 
 The service listens on `PORT`, defaulting to `8080`.
 
