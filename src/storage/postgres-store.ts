@@ -114,6 +114,18 @@ export class PostgresStore implements Store {
     return mapCompetitor(result.rows[0]);
   }
 
+  async deleteCompetitor(id: string): Promise<Competitor> {
+    const result = await this.pool.query<CompetitorRow>(
+      `
+      DELETE FROM competitors
+      WHERE id = $1
+      RETURNING id, name, canonical_domain, status, category, similarity_score, monitoring_priority
+      `,
+      [id]
+    );
+    return mapCompetitor(result.rows[0]);
+  }
+
   async upsertSource(input: UpsertSourceInput): Promise<SourceRecord> {
     const result = await this.pool.query<SourceRow>(
       `

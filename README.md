@@ -106,12 +106,13 @@ Interactivity:  https://competitor-intel-slack-vsfr73ns4a-ew.a.run.app/slack/int
 /competitor schedule
 /competitor schedule 08:30
 /competitor archive coupa.com
+/competitor delete coupa.com
 /competitor run now
 ```
 
 `add` accepts the domain and name in either order. Category defaults to `procurement_ai` when omitted.
 
-If `add` receives only a company name, or a profile URL such as LinkedIn, the bot uses Parallel Web discovery to find the official website and creates a candidate instead of approving it directly. The candidate is posted with Approve, Reject, and Show profile buttons.
+If `add` receives only a company name, or a profile URL such as LinkedIn, the bot uses Parallel Web discovery to find the official website and creates a candidate instead of approving it directly. The candidate is posted with Approve, Reject, Show profile, and Delete buttons.
 
 `suggest` creates a candidate competitor and posts approval buttons. `approve` moves it into active monitoring. `reject` keeps the audit trail but excludes it from scans.
 
@@ -120,6 +121,8 @@ If `add` receives only a company name, or a profile URL such as LinkedIn, the bo
 `schedule` shows or changes the daily digest time in `Europe/Istanbul`. The scheduler checks every minute, so any valid `HH:mm` can be used without code changes.
 
 `archive` is a soft delete: the competitor is excluded from future scans, but historical signals stay in Postgres.
+
+`delete` fully removes the competitor and its source graph. Historical signals remain in the archive with the competitor link detached.
 
 Supported categories:
 

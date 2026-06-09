@@ -35,6 +35,7 @@ export interface Store {
   upsertCompetitor(input: UpsertCompetitorInput): Promise<Competitor>;
   listCompetitors(): Promise<Competitor[]>;
   updateCompetitorStatus(input: { id: string; status: CompetitorStatus }): Promise<Competitor>;
+  deleteCompetitor(id: string): Promise<Competitor>;
   upsertSource(input: UpsertSourceInput): Promise<SourceRecord>;
   listEnabledSources(): Promise<SourceRecord[]>;
   listSourcesForCompetitor(competitorId: string): Promise<SourceRecord[]>;
@@ -79,6 +80,25 @@ export class MemoryStore implements Store {
     const competitor = { ...existing, status: input.status };
     this.competitors.set(competitor.id, competitor);
     return { ...competitor };
+  }
+
+  async deleteCompetitor(id: string): Promise<Competitor> {
+    const existing = this.competitors.get(id);
+    if (!existing) {
+      throw new Error(`Competitor not found: ${id}`);
+    }
+    this.competitors.delete(id);
+    for (const [sourceId, source] of this.sources.entries()) {
+      if (source.competitorId === id) {
+        this.sources.delete(sourceId);
+      }
+    }
+    for (const [signalId, signal] of this.signals.entries()) {
+      if (signal.competitorId === id) {
+        this.signals.set(signalId, { ...signal, competitorId: null });
+      }
+    }
+    return { ...existing };
   }
 
   async upsertSource(input: UpsertSourceInput): Promise<SourceRecord> {
