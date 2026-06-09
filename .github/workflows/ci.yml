@@ -73,8 +73,9 @@ jobs:
       - name: Deploy public Slack control service
         run: |
           slack_secret_assignments="SLACK_BOT_TOKEN=competitor-intel-slack-bot-token:latest,SLACK_CHANNEL_ID=competitor-intel-slack-channel-id:latest,DATABASE_URL=competitor-intel-database-url:latest,PARALLEL_API_KEY=competitor-intel-parallel-api-key:latest,OPENAI_API_KEY=competitor-intel-openai-api-key:latest,COMPETITOR_SEEDS=competitor-intel-competitor-seeds:latest"
+          slack_secret_flags=(--update-secrets "$slack_secret_assignments" --remove-env-vars SLACK_SIGNING_SECRET)
           if gcloud secrets versions access latest --secret competitor-intel-slack-signing-secret --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
-            slack_secret_assignments="${slack_secret_assignments},SLACK_SIGNING_SECRET=competitor-intel-slack-signing-secret:latest"
+            slack_secret_flags=(--update-secrets "${slack_secret_assignments},SLACK_SIGNING_SECRET=competitor-intel-slack-signing-secret:latest")
           else
             echo "competitor-intel-slack-signing-secret has no usable latest version; Slack routes will stay locked."
           fi
@@ -86,7 +87,7 @@ jobs:
             --build-service-account "$GCP_BUILD_SERVICE_ACCOUNT" \
             --set-cloudsql-instances "$CLOUD_SQL_INSTANCE" \
             --set-env-vars NODE_ENV=production,OPENAI_MODEL=gpt-5.4-mini,DAILY_DIGEST_HOUR_UTC=6,WEEKLY_DIGEST_DAY_UTC=1,ALERT_SCORE_THRESHOLD=0.75,ENABLE_JOB_ENDPOINTS=false,REQUIRE_SLACK_SIGNATURE=true \
-            --update-secrets "$slack_secret_assignments" \
+            "${slack_secret_flags[@]}" \
             --cpu 1 \
             --memory 512Mi \
             --max-instances 20 \
