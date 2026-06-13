@@ -6,6 +6,7 @@ import type { Competitor, CompetitorCategory, SlackMessage } from "../types.js";
 import type { SourceRecord, Store } from "../storage/memory-store.js";
 import { isDomainLike, isPriorityToken, normalizeDomain, normalizeScheduleTime, parsePriority, shouldDiscoverDomain, titleizeDomain, tokenize } from "./command-utils.js";
 import { deleteCompetitorFromCommand, findCompetitor, updateCompetitorStatus } from "./competitor-status.js";
+import { handleTechnicalCommand, type TechnicalResearchRunner } from "./technical-control.js";
 import {
   actions,
   button,
@@ -32,6 +33,7 @@ export type IntelSlashCommandInput = {
   userName?: string;
   triggerDigest?: () => Promise<unknown>;
   discoverCompetitor?: (query: CompetitorDiscoveryQuery) => Promise<CompetitorDiscoveryResult | undefined>;
+  technicalResearch?: TechnicalResearchRunner;
 };
 
 const categories: CompetitorCategory[] = [
@@ -48,6 +50,13 @@ const activeStatuses = new Set<Competitor["status"]>(["seeded", "approved", "can
 export async function handleIntelSlashCommand(input: IntelSlashCommandInput): Promise<SlackControlResponse> {
   const tokens = tokenize(input.text);
   const command = (tokens.shift() ?? "help").toLowerCase();
+  const technicalResponse = await handleTechnicalCommand({
+    store: input.store,
+    command,
+    tokens: [...tokens],
+    ...(input.technicalResearch ? { technicalResearch: input.technicalResearch } : {})
+  });
+  if (technicalResponse) return technicalResponse;
   if (command === "help" || command === "") return renderHelp();
   if (command === "list") return renderCompetitorList(await input.store.listCompetitors(), tokens.includes("all"));
   if (command === "add") return upsertCompetitorFromCommand(input.store, tokens, input.userName, "approved", input.discoverCompetitor);
