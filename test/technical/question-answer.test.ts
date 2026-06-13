@@ -93,16 +93,22 @@ describe("answerCompetitorQuestion", () => {
       { ...evidence[0]!, competitorId: storedCompetitor.id },
       { ...evidence[1]!, competitorId: storedCompetitor.id }
     ]);
-    const search = vi.fn(async (_input: { objective: string; searchQueries: string[] }) => [{
+    const search = vi.fn(async (_input: { objective: string; searchQueries: string[] }) => {
+      void _input;
+      return [{
         url: "https://ziphq.com/blog/ai-procurement",
         title: "Zip AI procurement",
         excerpts: ["Zip uses AI to classify procurement intake and suggest approvers."]
-      }]);
-    const extract = vi.fn(async (_input: { urls: string[]; objective: string; searchQueries?: string[] }) => [{
+      }];
+    });
+    const extract = vi.fn(async (_input: { urls: string[]; objective: string; searchQueries?: string[] }) => {
+      void _input;
+      return [{
         url: "https://ziphq.com/blog/ai-procurement",
         title: "Zip AI procurement",
         excerpts: ["AI classifies requests and routes approvals based on procurement context."]
-      }]);
+      }];
+    });
     const sourceClient = { search, extract };
     const answerer = {
       answer: vi.fn(async (input) => new DeterministicQuestionAnswerer().answer(input))

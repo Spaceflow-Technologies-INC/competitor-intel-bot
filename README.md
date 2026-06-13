@@ -14,7 +14,7 @@ The bot is built as a small TypeScript service that can run on Google Cloud Run.
 - Scores every signal across relevance, novelty, confidence, and impact.
 - Scores source quality so official, trusted, general, and weak sources read differently.
 - Deduplicates repeat signals and merges new source URLs into the existing signal.
-- Renders high-signal Slack alerts, daily digest messages, technical briefs, evidence views, and competitor comparisons.
+- Renders high-signal Slack alerts, daily digest messages, technical briefs, evidence views, competitor comparisons, and source-backed competitor Q&A answers.
 - Lets leaders manage monitoring, approvals, battlecards, discovery, technical research depth, and digest timing from Slack with `/competitor` commands.
 - Exposes Cloud Scheduler friendly job endpoints.
 
@@ -28,6 +28,7 @@ Cloud Scheduler
     -> deterministic signal extraction
     -> technical source graph + evidence extraction
     -> deterministic/OpenAI technical brief synthesis
+    -> question-specific research answers
     -> signal scoring
     -> Slack channel alerts/digests
 ```
@@ -112,6 +113,7 @@ Interactivity:  https://competitor-intel-slack-vsfr73ns4a-ew.a.run.app/slack/int
 /competitor tech zip.com
 /competitor refresh zip.com
 /competitor compare zip.com coupa.com
+/competitor ask ziphq.com "How do they use AI in intake approvals?"
 /competitor evidence zip.com ai_usage
 /competitor unknowns zip.com
 /competitor schedule
@@ -138,6 +140,8 @@ If `add` receives only a company name, or a profile URL such as LinkedIn, the bo
 Technical briefs separate what is directly evidenced, what is inferred, and what is still unknown. They cover what the competitor does technically, their feature map, AI leverage, workflow pipeline, integrations, governance, likely moat, weaknesses, and Spaceflow counter-positioning.
 
 `compare` puts two technical briefs side by side in Slack-friendly sections so product, sales, and founders can quickly see confidence, evidence volume, unknowns, and positioning differences.
+
+`ask` answers a specific competitor question from the current intel graph plus fresh Parallel research. The answer is posted with a short answer, evidence, inference, unknowns, confidence, and source links. OpenAI structured output is used when `OPENAI_API_KEY` is configured; deterministic fallback keeps answers working when only Parallel is available.
 
 `evidence` lists the source-backed claims for a competitor. Add a claim type such as `ai_usage`, `feature`, `pipeline_step`, `integration`, `governance`, `moat`, `weakness`, or `unknown` to filter it. `unknowns` shows only the missing facts the team should verify next.
 
