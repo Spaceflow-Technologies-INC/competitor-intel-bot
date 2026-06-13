@@ -1,4 +1,5 @@
-import type { ExtractedPage } from "../sources/parallel-client.js";
+import type { ExtractedPage, WebIntelClient, WebSearchResult } from "../sources/parallel-client.js";
+import type { Store } from "../storage/memory-store.js";
 import type { Competitor, CompetitorQuestionAnswer, IntelSignal, QuestionAnswerCitation, QuestionAnswerPoint, TechnicalBrief, TechnicalEvidenceItem } from "../types.js";
 
 export type BuildQuestionAnswerInput = {
@@ -14,6 +15,41 @@ export type BuildQuestionAnswerInput = {
 export type CompetitorQuestionAnswerer = {
   answer(input: BuildQuestionAnswerInput): Promise<CompetitorQuestionAnswer>;
 };
+
+export type AnswerCompetitorQuestionInput = {
+  store: Store;
+  competitor: Competitor;
+  question: string;
+  sourceClient: WebIntelClient;
+  answerer?: CompetitorQuestionAnswerer;
+  now?: string;
+};
+
+export async function answerCompetitorQuestion(input: AnswerCompetitorQuestionInput): Promise<CompetitorQuestionAnswer> {
+  const [evidence, signals, sources, technicalBrief] = await Promise.all([
+    input.store.listEvidenceForCompetitor(input.competitor.id),
+    input.store.listSignalsForCompetitor(input.competitor.id, 8),
+    input.store.listSourcesForCompetitor(input.competitor.id),
+    input.store.getLatestTechnicalBrief(input.competitor.id)
+  ]);
+  const objective = buildQuestionObjective(input.competitor, input.question);
+  const searchQueries = buildQuestionSearchQueries(input.competitor, input.question);
+  const searchResults = await input.sourceClient.search({ objective, searchQueries });
+  const pages = await extractQuestionPages(input.sourceClient, objective, searchQueries, [
+    ...sources.filter((source) => source.enabled).map((source) => source.url),
+    ...searchResults.map((result) => result.url)
+  ], searchResults);
+  const answerer = input.answerer ?? new DeterministicQuestionAnswerer();
+  return answerer.answer({
+    competitor: input.competitor,
+    question: input.question,
+    evidence,
+    signals,
+    pages,
+    ...(technicalBrief ? { technicalBrief } : {}),
+    createdAt: input.now ?? new Date().toISOString()
+  });
+}
 
 export class DeterministicQuestionAnswerer implements CompetitorQuestionAnswerer {
   async answer(input: BuildQuestionAnswerInput): Promise<CompetitorQuestionAnswer> {
@@ -42,6 +78,43 @@ export class DeterministicQuestionAnswerer implements CompetitorQuestionAnswerer
       generatedAt: input.createdAt
     };
   }
+}
+
+function buildQuestionObjective(competitor: Competitor, question: string): string {
+  return [
+    `Answer this Spaceflow competitor intelligence question about ${competitor.name} (${competitor.canonicalDomain}): ${question}`,
+    "Focus on source-backed technical facts about features, AI usage, workflow pipeline, integrations, governance, and procurement operations.",
+    "Prefer official product, docs, changelog, security, integration, and customer proof pages. Mark private architecture as unknown if not public."
+  ].join(" ");
+}
+
+function buildQuestionSearchQueries(competitor: Competitor, question: string): string[] {
+  const cleanedQuestion = question.replace(/[^\w\s.-]/g, " ").replace(/\s+/g, " ").trim();
+  return [
+    `${competitor.name} ${cleanedQuestion}`,
+    `${competitor.canonicalDomain} ${cleanedQuestion}`,
+    `${competitor.name} AI procurement workflow integrations governance`
+  ];
+}
+
+async function extractQuestionPages(
+  sourceClient: WebIntelClient,
+  objective: string,
+  searchQueries: string[],
+  urls: string[],
+  searchResults: WebSearchResult[]
+): Promise<ExtractedPage[]> {
+  const uniqueUrls = [...new Set(urls)].slice(0, 12);
+  const extracted = await sourceClient.extract({ urls: uniqueUrls, objective, searchQueries });
+  if (extracted.length > 0) return extracted;
+  return searchResults.map((result) => {
+    const page: ExtractedPage = {
+      url: result.url,
+      title: result.title,
+      excerpts: result.excerpts
+    };
+    return result.publishDate ? { ...page, publishDate: result.publishDate } : page;
+  });
 }
 
 function evidencePoint(item: TechnicalEvidenceItem): QuestionAnswerPoint {

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { DeterministicQuestionAnswerer } from "../../src/technical/question-answer.js";
+import { DeterministicQuestionAnswerer, answerCompetitorQuestion } from "../../src/technical/question-answer.js";
+import { MemoryStore } from "../../src/storage/memory-store.js";
 import type { Competitor, TechnicalEvidenceItem } from "../../src/types.js";
 
 const competitor: Competitor = {
@@ -68,5 +69,65 @@ describe("DeterministicQuestionAnswerer", () => {
       })
     );
     expect(answer.confidence).toBeGreaterThan(0.5);
+  });
+});
+
+describe("answerCompetitorQuestion", () => {
+  it("combines stored intel with question-specific Parallel research", async () => {
+    const store = new MemoryStore();
+    const storedCompetitor = await store.upsertCompetitor({
+      name: competitor.name,
+      canonicalDomain: competitor.canonicalDomain,
+      status: competitor.status,
+      category: competitor.category,
+      similarityScore: competitor.similarityScore,
+      monitoringPriority: competitor.monitoringPriority
+    });
+    await store.upsertSource({
+      competitorId: storedCompetitor.id,
+      sourceType: "product",
+      url: "https://ziphq.com/product/intake",
+      enabled: true
+    });
+    await store.recordEvidenceItems([
+      { ...evidence[0]!, competitorId: storedCompetitor.id },
+      { ...evidence[1]!, competitorId: storedCompetitor.id }
+    ]);
+    const search = vi.fn(async (_input: { objective: string; searchQueries: string[] }) => [{
+        url: "https://ziphq.com/blog/ai-procurement",
+        title: "Zip AI procurement",
+        excerpts: ["Zip uses AI to classify procurement intake and suggest approvers."]
+      }]);
+    const extract = vi.fn(async (_input: { urls: string[]; objective: string; searchQueries?: string[] }) => [{
+        url: "https://ziphq.com/blog/ai-procurement",
+        title: "Zip AI procurement",
+        excerpts: ["AI classifies requests and routes approvals based on procurement context."]
+      }]);
+    const sourceClient = { search, extract };
+    const answerer = {
+      answer: vi.fn(async (input) => new DeterministicQuestionAnswerer().answer(input))
+    };
+
+    const answer = await answerCompetitorQuestion({
+      store,
+      competitor: storedCompetitor,
+      question: "How does Zip use AI in intake approvals?",
+      sourceClient,
+      answerer,
+      now: "2026-06-13T10:00:00.000Z"
+    });
+
+    expect(search).toHaveBeenCalledWith(expect.objectContaining({
+      objective: expect.stringContaining("How does Zip use AI in intake approvals?")
+    }));
+    expect(extract.mock.calls[0]?.[0].urls).toEqual(expect.arrayContaining([
+      "https://ziphq.com/product/intake",
+      "https://ziphq.com/blog/ai-procurement"
+    ]));
+    expect(answerer.answer).toHaveBeenCalledWith(expect.objectContaining({
+      evidence: expect.arrayContaining([expect.objectContaining({ label: "AI intake classification" })]),
+      pages: expect.arrayContaining([expect.objectContaining({ title: "Zip AI procurement" })])
+    }));
+    expect(answer.shortAnswer).toContain("Zip");
   });
 });
