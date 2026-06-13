@@ -92,6 +92,7 @@ jobs:
             --cpu 1 \
             --memory 512Mi \
             --max-instances 20 \
+            --no-cpu-throttling \
             --allow-unauthenticated
       - name: Verify Cloud Run revision
         run: |
