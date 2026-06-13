@@ -5,6 +5,7 @@ import { scoreSourceUrl } from "../signals/source-quality.js";
 import type { Competitor, CompetitorCategory, SlackMessage } from "../types.js";
 import type { SourceRecord, Store } from "../storage/memory-store.js";
 import { isDomainLike, isPriorityToken, normalizeDomain, normalizeScheduleTime, parsePriority, shouldDiscoverDomain, titleizeDomain, tokenize } from "./command-utils.js";
+import { competitorCategories as categories, defaultActions, isCompetitorCategory, renderHelp } from "./control-help.js";
 import { deleteCompetitorFromCommand, findCompetitor, updateCompetitorStatus } from "./competitor-status.js";
 import { handleTechnicalCommand, type QuestionAnswerRunner, type TechnicalResearchRunner } from "./technical-control.js";
 import {
@@ -36,15 +37,6 @@ export type IntelSlashCommandInput = {
   technicalResearch?: TechnicalResearchRunner;
   questionAnswer?: QuestionAnswerRunner;
 };
-
-const categories: CompetitorCategory[] = [
-  "procurement_ai",
-  "sourcing_automation",
-  "supplier_intelligence",
-  "erp_procurement",
-  "workflow_agent",
-  "adjacent"
-];
 
 const activeStatuses = new Set<Competitor["status"]>(["seeded", "approved", "candidate"]);
 
@@ -250,12 +242,6 @@ function renderCompetitorList(competitors: Competitor[], includeAll: boolean): S
   return controlResponse({ responseType: "ephemeral", text: `${visible.length} competitors listed.`, blocks });
 }
 
-function renderHelp(prefix?: string): SlackControlResponse {
-  const examples = ["`/competitor list`", "`/competitor add \"Acme Sourcing\"`", "`/competitor add https://www.linkedin.com/company/acme-sourcing/`", "`/competitor add coupa.com Coupa procurement_ai`", "`/competitor suggest newco.ai NewCo procurement_ai`", "`/competitor approve newco.ai`", "`/competitor show coupa.com`", "`/competitor schedule 08:30`", "`/competitor archive coupa.com`", "`/competitor delete coupa.com`", "`/competitor run now`"].join("\n");
-  const blocks = [header("Competitor Intel control"), section([prefix, "Manage monitoring from Slack without code changes.", examples].filter(Boolean).join("\n\n")), section(`Categories: ${categories.map((category) => `\`${category}\``).join(", ")}`), defaultActions()];
-  return controlResponse({ responseType: "ephemeral", text: prefix ?? "Competitor Intel commands", blocks });
-}
-
 function renderUnknownCategory(value: string): SlackControlResponse {
   return renderHelp(`Unknown category: ${value}. Use one of: ${categories.join(", ")}.`);
 }
@@ -265,9 +251,5 @@ function controlResponse(input: { responseType: SlackControlResponse["response_t
 }
 
 function isCategory(value: string): value is CompetitorCategory {
-  return categories.includes(value as CompetitorCategory);
-}
-
-function defaultActions(): Record<string, unknown> {
-  return actions([button("List competitors", "intel_list", "list"), button("Run scan", "intel_run_now", "run now", "primary")]);
+  return isCompetitorCategory(value);
 }

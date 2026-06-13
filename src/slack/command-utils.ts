@@ -1,5 +1,7 @@
 export function tokenize(text: string): string[] {
-  return [...text.matchAll(/"([^"]+)"|'([^']+)'|(\S+)/g)].map((match) => match[1] ?? match[2] ?? match[3] ?? "").filter(Boolean);
+  return [...text.matchAll(/"([^"]+)"|'([^']+)'|(\S+)/g)]
+    .map((match) => normalizeCommandToken(match[1] ?? match[2] ?? match[3] ?? ""))
+    .filter(Boolean);
 }
 
 export function isDomainLike(value: string): boolean {
@@ -11,7 +13,8 @@ export function isDomainLike(value: string): boolean {
 }
 
 export function normalizeDomain(value: string): string {
-  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  const normalized = normalizeCommandToken(value);
+  const withProtocol = /^https?:\/\//i.test(normalized) ? normalized : `https://${normalized}`;
   return new URL(withProtocol).hostname.replace(/^www\./i, "").toLowerCase();
 }
 
@@ -40,4 +43,13 @@ export function normalizeScheduleTime(value: string): string | undefined {
 
 export function shouldDiscoverDomain(domain: string): boolean {
   return ["linkedin.com", "crunchbase.com", "g2.com", "capterra.com"].some((blocked) => domain === blocked || domain.endsWith(`.${blocked}`));
+}
+
+function normalizeCommandToken(value: string): string {
+  const trimmed = value.trim();
+  const slackLink = trimmed.match(/^<([^>|]+)(?:\|[^>]+)?>$/);
+  if (slackLink?.[1]) return slackLink[1];
+  const markdownLink = trimmed.match(/^\[[^\]]+\]\((https?:\/\/[^)]+)\)$/i);
+  if (markdownLink?.[1]) return markdownLink[1];
+  return trimmed;
 }
