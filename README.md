@@ -7,14 +7,15 @@ The bot is built as a small TypeScript service that can run on Google Cloud Run.
 ## What it does
 
 - Tracks seed competitors from `COMPETITOR_SEEDS`.
-- Creates a source graph for each competitor: homepage, blog, pricing, and careers.
+- Creates a source graph for each competitor: homepage, product pages, docs, API docs, integrations, security, careers, reviews, changelog, news, and technographic sources.
 - Normalizes fetched source snapshots into stable hashes.
 - Extracts deterministic intel signals such as product launches, customer wins, pricing changes, integrations, funding, and hiring signals.
+- Extracts technical evidence about features, workflow pipeline, AI usage, integrations, governance, moats, weaknesses, and unknowns.
 - Scores every signal across relevance, novelty, confidence, and impact.
 - Scores source quality so official, trusted, general, and weak sources read differently.
 - Deduplicates repeat signals and merges new source URLs into the existing signal.
-- Renders high-signal Slack alerts and daily digest messages.
-- Lets leaders manage monitoring, approvals, battlecards, discovery, and digest timing from Slack with `/competitor` commands.
+- Renders high-signal Slack alerts, daily digest messages, technical briefs, evidence views, and competitor comparisons.
+- Lets leaders manage monitoring, approvals, battlecards, discovery, technical research depth, and digest timing from Slack with `/competitor` commands.
 - Exposes Cloud Scheduler friendly job endpoints.
 
 ## Architecture
@@ -25,11 +26,13 @@ Cloud Scheduler
     -> Postgres competitor graph
     -> source normalization
     -> deterministic signal extraction
+    -> technical source graph + evidence extraction
+    -> deterministic/OpenAI technical brief synthesis
     -> signal scoring
     -> Slack channel alerts/digests
 ```
 
-The current implementation is public-source first. Paid discovery APIs and LLM summarization are optional env-backed extensions, not required for the service to boot.
+The current implementation is public-source first. Parallel Web powers discovery and technical source extraction when configured. OpenAI is optional and used for higher-quality summaries and technical briefs; deterministic fallbacks keep the service useful without it.
 
 ## Local setup
 
@@ -103,6 +106,14 @@ Interactivity:  https://competitor-intel-slack-vsfr73ns4a-ew.a.run.app/slack/int
 /competitor approve newco.ai
 /competitor reject newco.ai
 /competitor show coupa.com
+/competitor onboard
+/competitor onboard depth deep audience technical cadence weekly
+/competitor sources zip.com
+/competitor tech zip.com
+/competitor refresh zip.com
+/competitor compare zip.com coupa.com
+/competitor evidence zip.com ai_usage
+/competitor unknowns zip.com
 /competitor schedule
 /competitor schedule 08:30
 /competitor archive coupa.com
@@ -117,6 +128,18 @@ If `add` receives only a company name, or a profile URL such as LinkedIn, the bo
 `suggest` creates a candidate competitor and posts approval buttons. `approve` moves it into active monitoring. `reject` keeps the audit trail but excludes it from scans.
 
 `show` renders a Slack battlecard with profile fields, best source quality, recent signals, suggested next move, and source links.
+
+`onboard` shows the current research configuration. `onboard depth deep audience technical cadence weekly` updates how much evidence the technical brief collects, who it is written for, and the preferred review cadence. Supported depths are `light`, `standard`, and `deep`. Supported audiences are `founder`, `sales`, `product`, and `technical`.
+
+`sources` previews the technical source graph before a scan. This is useful when a competitor has docs, changelogs, integrations, or security pages that should be covered.
+
+`tech` and `brief` render the latest cached technical brief, or run a new Parallel-backed research pass when the Slack service has `PARALLEL_API_KEY`. `refresh` forces a fresh scan.
+
+Technical briefs separate what is directly evidenced, what is inferred, and what is still unknown. They cover what the competitor does technically, their feature map, AI leverage, workflow pipeline, integrations, governance, likely moat, weaknesses, and Spaceflow counter-positioning.
+
+`compare` puts two technical briefs side by side in Slack-friendly sections so product, sales, and founders can quickly see confidence, evidence volume, unknowns, and positioning differences.
+
+`evidence` lists the source-backed claims for a competitor. Add a claim type such as `ai_usage`, `feature`, `pipeline_step`, `integration`, `governance`, `moat`, `weakness`, or `unknown` to filter it. `unknowns` shows only the missing facts the team should verify next.
 
 `schedule` shows or changes the daily digest time in `Europe/Istanbul`. The scheduler checks every minute, so any valid `HH:mm` can be used without code changes.
 
@@ -173,8 +196,8 @@ Optional:
 | Variable | Purpose |
 | --- | --- |
 | `PARALLEL_API_KEY` | Parallel Web API key for search and page extraction. |
-| `OPENAI_API_KEY` | Reserved for LLM summarization. |
-| `OPENAI_MODEL` | Optional model name for summarization extensions. Defaults to `gpt-5.4-mini`. |
+| `OPENAI_API_KEY` | Optional OpenAI key for higher-quality digest summaries and technical briefs. |
+| `OPENAI_MODEL` | Optional model name for summarization and technical brief synthesis. Defaults to `gpt-5.4-mini`. |
 | `ALERT_SCORE_THRESHOLD` | Default `0.75`. |
 | `SLACK_SIGNING_SECRET` | Required for public Slack command/interactivity endpoints. |
 | `ENABLE_JOB_ENDPOINTS` | Set `true` for the private scheduler service and `false` for the public Slack service. |

@@ -1,5 +1,5 @@
 import type { ExtractedPage } from "../sources/parallel-client.js";
-import type { Competitor, EvidenceClaimType, EvidenceStance, TechnicalEvidenceItem, TechnicalSourceKind } from "../types.js";
+import type { Competitor, EvidenceClaimType, TechnicalEvidenceItem, TechnicalSourceKind } from "../types.js";
 
 export type ExtractTechnicalEvidenceInput = {
   competitor: Competitor;

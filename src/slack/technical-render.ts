@@ -1,6 +1,6 @@
 import type { Competitor, IntelConfig, TechnicalBrief, TechnicalEvidenceItem } from "../types.js";
 import type { TechnicalSourcePlan } from "../technical/source-graph.js";
-import { actions, button, chunked, context, fields, formatPercent, header, labelValue, markdown, section, slackLink } from "./blocks.js";
+import { actions, button, chunked, context, fields, formatPercent, header, labelValue, section, slackLink } from "./blocks.js";
 
 export type SlackControlResponse = {
   response_type: "ephemeral" | "in_channel";

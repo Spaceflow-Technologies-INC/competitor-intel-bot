@@ -9,9 +9,12 @@ import { runDailyDigestJob, type DigestResult } from "./jobs/run-digest.js";
 import { runScheduledDigestJob } from "./jobs/scheduled-digest.js";
 import { ParallelClient } from "./sources/parallel-client.js";
 import { handleIntelSlashCommand } from "./slack/control.js";
+import type { TechnicalResearchRunner } from "./slack/technical-control.js";
 import { verifySlackRequest } from "./slack/signature.js";
 import { createStore as createDatabaseStore } from "./storage/index.js";
 import type { Store } from "./storage/memory-store.js";
+import { OpenAITechnicalBriefSynthesizer } from "./technical/openai-technical-brief.js";
+import { researchTechnicalBrief } from "./technical/research.js";
 
 export type ServerDeps = {
   runCollection: () => Promise<CollectionResult>;
@@ -19,6 +22,7 @@ export type ServerDeps = {
   runScheduledDigest?: () => Promise<DigestResult & { skipped?: boolean; scheduledTime?: string }>;
   createStore?: () => Promise<Store>;
   discoverCompetitor?: (query: CompetitorDiscoveryQuery) => Promise<CompetitorDiscoveryResult | undefined>;
+  technicalResearch?: TechnicalResearchRunner;
   slackSigningSecret?: string;
   enableJobEndpoints?: boolean;
   requireSlackSignature?: boolean;
@@ -63,12 +67,27 @@ const directRunUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
 if (import.meta.url === directRunUrl) {
   const config = loadConfig();
   const discoveryClient = config.optionalApis.parallelApiKey ? new ParallelClient({ apiKey: config.optionalApis.parallelApiKey }) : undefined;
+  const technicalSynthesizer = config.optionalApis.openAi
+    ? new OpenAITechnicalBriefSynthesizer({
+      apiKey: config.optionalApis.openAi.apiKey,
+      model: config.optionalApis.openAi.model
+    })
+    : undefined;
   const server = buildServer({
     runCollection: runCollectionJob,
     runDailyDigest: runDailyDigestJob,
     runScheduledDigest: runScheduledDigestJob,
     createStore: () => createDatabaseStore(config.database),
     ...(discoveryClient ? { discoverCompetitor: (query) => discoverCompetitor({ ...query, search: discoveryClient.search.bind(discoveryClient) }) } : {}),
+    ...(discoveryClient ? {
+      technicalResearch: ({ store, competitor, forceRefresh }) => researchTechnicalBrief({
+        store,
+        competitor,
+        sourceClient: discoveryClient,
+        ...(technicalSynthesizer ? { synthesizer: technicalSynthesizer } : {}),
+        forceRefresh
+      })
+    } : {}),
     enableJobEndpoints: config.runtime.enableJobEndpoints,
     requireSlackSignature: config.runtime.requireSlackSignature,
     ...(config.slack.signingSecret ? { slackSigningSecret: config.slack.signingSecret } : {})
@@ -101,6 +120,7 @@ async function handleSlackCommand(deps: ServerDeps, values: Record<string, strin
       text: values.text ?? "help",
       triggerDigest: deps.runDailyDigest,
       ...(deps.discoverCompetitor ? { discoverCompetitor: deps.discoverCompetitor } : {}),
+      ...(deps.technicalResearch ? { technicalResearch: deps.technicalResearch } : {}),
       ...(userName ? { userName } : {})
     });
     return reply.send(isInteraction ? { ...response, replace_original: true } : response);
