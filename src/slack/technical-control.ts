@@ -1,8 +1,9 @@
 import type { ResearchTechnicalBriefResult } from "../technical/research.js";
 import { buildTechnicalSourcePlan } from "../technical/source-graph.js";
-import type { Competitor, EvidenceClaimType, IntelConfig } from "../types.js";
+import type { Competitor, CompetitorQuestionAnswer, EvidenceClaimType, IntelConfig } from "../types.js";
 import type { Store } from "../storage/memory-store.js";
 import { findCompetitor } from "./competitor-status.js";
+import { renderQuestionAnswer, renderQuestionUnavailable } from "./question-render.js";
 import {
   renderEvidenceList,
   renderOnboarding,
@@ -20,11 +21,18 @@ export type TechnicalResearchRunner = (input: {
   forceRefresh: boolean;
 }) => Promise<ResearchTechnicalBriefResult>;
 
+export type QuestionAnswerRunner = (input: {
+  store: Store;
+  competitor: Competitor;
+  question: string;
+}) => Promise<CompetitorQuestionAnswer>;
+
 export type TechnicalCommandInput = {
   store: Store;
   command: string;
   tokens: string[];
   technicalResearch?: TechnicalResearchRunner;
+  questionAnswer?: QuestionAnswerRunner;
 };
 
 const claimTypes = new Set<EvidenceClaimType>([
@@ -45,6 +53,7 @@ export async function handleTechnicalCommand(input: TechnicalCommandInput): Prom
   if (input.command === "tech" || input.command === "brief") return handleBrief(input, false);
   if (input.command === "refresh") return handleBrief(input, true);
   if (input.command === "compare") return handleCompare(input);
+  if (input.command === "ask") return handleAsk(input);
   if (input.command === "evidence") return handleEvidence(input.store, input.tokens);
   if (input.command === "unknowns") return handleUnknowns(input.store, input.tokens.join(" "));
   return undefined;
@@ -99,6 +108,19 @@ async function handleCompare(input: TechnicalCommandInput): Promise<SlackControl
   const rightBrief = await getBriefForCompare(input, right);
   if (!leftBrief || !rightBrief) return renderTechnicalUnavailable();
   return renderTechnicalComparison({ competitor: left, brief: leftBrief }, { competitor: right, brief: rightBrief });
+}
+
+async function handleAsk(input: TechnicalCommandInput): Promise<SlackControlResponse> {
+  const [query, ...questionParts] = input.tokens;
+  const question = questionParts.join(" ").trim();
+  if (!query || !question) {
+    return renderTechnicalHelp("Ask needs a competitor and question, for example: `/competitor ask ziphq.com \"How do they use AI in intake approvals?\"`.");
+  }
+  const competitor = findCompetitor(await input.store.listCompetitors(), query);
+  if (!competitor) return renderTechnicalHelp(`Could not find competitor: ${query}`);
+  if (!input.questionAnswer) return renderQuestionUnavailable();
+  const answer = await input.questionAnswer({ store: input.store, competitor, question });
+  return renderQuestionAnswer(competitor, answer);
 }
 
 async function getBriefForCompare(input: TechnicalCommandInput, competitor: Competitor) {
