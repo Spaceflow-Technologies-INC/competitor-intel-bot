@@ -130,6 +130,17 @@ async function handleSlackCommand(deps: ServerDeps, values: Record<string, strin
   if (!deps.createStore) {
     return reply.code(503).send({ error: "slack_control_not_configured" });
   }
+  if (!isInteraction && deps.questionAnswer && isAsyncAskCommand(values)) {
+    void answerQuestionInBackground(deps, values).catch(() => undefined);
+    return reply.send({
+      response_type: "ephemeral",
+      text: "Competitor research started.",
+      blocks: [
+        { type: "header", text: { type: "plain_text", text: "Competitor research started" } },
+        { type: "section", text: { type: "mrkdwn", text: "I am researching this question now. The answer will post back here with evidence, inference, unknowns, confidence, and sources." } }
+      ]
+    });
+  }
   const store = await deps.createStore();
   try {
     const userName = values.user_name;
@@ -146,6 +157,48 @@ async function handleSlackCommand(deps: ServerDeps, values: Record<string, strin
   } finally {
     await closeStore(store);
   }
+}
+
+async function answerQuestionInBackground(deps: ServerDeps, values: Record<string, string>): Promise<void> {
+  if (!deps.createStore || !values.response_url) return;
+  const store = await deps.createStore();
+  try {
+    const userName = values.user_name;
+    const response = await handleIntelSlashCommand({
+      store,
+      text: values.text ?? "help",
+      triggerDigest: deps.runDailyDigest,
+      ...(deps.discoverCompetitor ? { discoverCompetitor: deps.discoverCompetitor } : {}),
+      ...(deps.technicalResearch ? { technicalResearch: deps.technicalResearch } : {}),
+      ...(deps.questionAnswer ? { questionAnswer: deps.questionAnswer } : {}),
+      ...(userName ? { userName } : {})
+    });
+    await postSlackResponse(values.response_url, response);
+  } catch {
+    await postSlackResponse(values.response_url, {
+      response_type: "ephemeral",
+      text: "Competitor research failed.",
+      blocks: [
+        { type: "header", text: { type: "plain_text", text: "Competitor research failed" } },
+        { type: "section", text: { type: "mrkdwn", text: "The question research job failed before producing an answer. Try again, or run `/competitor evidence <domain>` to inspect stored sources." } }
+      ]
+    });
+  } finally {
+    await closeStore(store);
+  }
+}
+
+async function postSlackResponse(responseUrl: string, response: unknown): Promise<void> {
+  if (!responseUrl.startsWith("https://")) return;
+  await fetch(responseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(response)
+  });
+}
+
+function isAsyncAskCommand(values: Record<string, string>): boolean {
+  return Boolean(values.response_url && values.text?.trim().toLowerCase().startsWith("ask "));
 }
 
 function isVerifiedSlackRequest(deps: ServerDeps, headers: Record<string, unknown>, rawBody: string): boolean {

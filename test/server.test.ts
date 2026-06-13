@@ -1,8 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildServer } from "../src/server.js";
 import { MemoryStore } from "../src/storage/memory-store.js";
 import type { CompetitorQuestionAnswer, TechnicalBrief } from "../src/types.js";
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("server", () => {
   it("responds to health checks", async () => {
@@ -217,6 +219,50 @@ describe("server", () => {
       question: "How do they use AI?"
     }));
   });
+
+  it("acknowledges Slack ask commands immediately and posts the final answer to response_url", async () => {
+    const store = new MemoryStore();
+    const competitor = await store.upsertCompetitor({
+      name: "Zip",
+      canonicalDomain: "ziphq.com",
+      status: "approved",
+      category: "procurement_ai",
+      similarityScore: 0.84,
+      monitoringPriority: 1
+    });
+    const questionAnswer = vi.fn(async () => competitorAnswer(competitor.id));
+    const fetchMock = vi.fn(async () => response(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const server = buildServer({
+      runCollection: async () => ({ processedSignals: 0, storedSignals: 0, postedSignals: 0, errors: 0 }),
+      runDailyDigest: async () => ({ postedSignals: 0 }),
+      createStore: async () => store,
+      questionAnswer
+    });
+
+    const commandResponse = await server.inject({
+      method: "POST",
+      url: "/slack/commands",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: new URLSearchParams({
+        text: 'ask ziphq.com "How do they use AI?"',
+        response_url: "https://hooks.slack.test/response"
+      }).toString()
+    });
+
+    expect(commandResponse.statusCode).toBe(200);
+    expect(commandResponse.json()).toMatchObject({
+      response_type: "ephemeral",
+      text: "Competitor research started."
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith("https://hooks.slack.test/response", expect.objectContaining({
+      method: "POST"
+    })));
+    expect(questionAnswer).toHaveBeenCalledWith(expect.objectContaining({
+      competitor,
+      question: "How do they use AI?"
+    }));
+  });
 });
 
 function technicalBrief(competitorId: string): TechnicalBrief {
@@ -245,4 +291,8 @@ function competitorAnswer(competitorId: string): CompetitorQuestionAnswer {
     citations: [{ title: "Zip Intake", url: "https://ziphq.com/product/intake", excerpt: "AI classifies intake." }],
     generatedAt: "2026-06-13T10:00:00.000Z"
   };
+}
+
+function response(status: number, body: unknown): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => body, text: async () => JSON.stringify(body) } as Response;
 }
