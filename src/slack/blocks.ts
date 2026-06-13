@@ -22,8 +22,33 @@ export function actions(elements: Array<Record<string, unknown>>): Record<string
   return { type: "actions", elements };
 }
 
-export function button(text: string, actionId: string, value: string, style?: "primary" | "danger"): Record<string, unknown> {
-  return { type: "button", text: { type: "plain_text", text }, action_id: actionId, value, ...(style ? { style } : {}) };
+export type ButtonStyle = "primary" | "danger";
+
+export type ConfirmInput = {
+  title: string;
+  text: string;
+  confirm?: string;
+  deny?: string;
+  style?: ButtonStyle;
+};
+
+export type ButtonOptions = {
+  style?: ButtonStyle;
+  confirm?: ConfirmInput;
+  accessibilityLabel?: string;
+};
+
+export function button(text: string, actionId: string, value: string, styleOrOptions?: ButtonStyle | ButtonOptions): Record<string, unknown> {
+  const options: ButtonOptions = typeof styleOrOptions === "string" ? { style: styleOrOptions } : styleOrOptions ?? {};
+  return {
+    type: "button",
+    text: { type: "plain_text", text: truncate(text, 75) },
+    action_id: actionId,
+    value,
+    ...(options.style ? { style: options.style } : {}),
+    ...(options.confirm ? { confirm: confirmObject(options.confirm) } : {}),
+    ...(options.accessibilityLabel ? { accessibility_label: truncate(options.accessibilityLabel, 75) } : {})
+  };
 }
 
 export function markdown(text: string): Record<string, unknown> {
@@ -72,6 +97,16 @@ function sanitizeUrl(url: string): string {
 
 function capitalize(value: string): string {
   return value ? `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}` : value;
+}
+
+function confirmObject(input: ConfirmInput): Record<string, unknown> {
+  return {
+    title: { type: "plain_text", text: truncate(input.title, 100) },
+    text: { type: "plain_text", text: truncate(input.text, 300) },
+    confirm: { type: "plain_text", text: truncate(input.confirm ?? "Confirm", 30) },
+    deny: { type: "plain_text", text: truncate(input.deny ?? "Cancel", 30) },
+    ...(input.style ? { style: input.style } : {})
+  };
 }
 
 function truncate(value: string, maxLength: number): string {

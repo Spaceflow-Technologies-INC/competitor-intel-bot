@@ -1,5 +1,6 @@
 import type { Competitor, IntelConfig, TechnicalBrief, TechnicalEvidenceItem } from "../types.js";
 import type { TechnicalSourcePlan } from "../technical/source-graph.js";
+import { evidenceButton, refreshBriefButton, showBattlecardButton, technicalBriefButton, unknownsButton } from "./action-presets.js";
 import { actions, button, chunked, context, fields, formatPercent, header, labelValue, section, slackLink } from "./blocks.js";
 
 export type SlackControlResponse = {
@@ -42,7 +43,7 @@ export function renderSourceGraph(competitor: Competitor, plan: TechnicalSourceP
       header(`${competitor.name} source graph`),
       fields([["Objective", plan.objective], ["Queries", plan.searchQueries.slice(0, 3).map((query) => `\`${query}\``).join("\n")]]),
       ...chunked(rows, 4).map((chunk) => fields(chunk)),
-      actions([button("Refresh brief", "intel_refresh_technical", `refresh ${competitor.canonicalDomain}`, "primary")])
+      actions([refreshBriefButton(competitor.canonicalDomain, "Refresh brief", "primary"), technicalBriefButton(competitor.canonicalDomain), showBattlecardButton(competitor.canonicalDomain)])
     ]
   };
 }
@@ -59,12 +60,13 @@ export function renderTechnicalBrief(competitor: Competitor, brief: TechnicalBri
         ["Unknowns", `${brief.unknownCount}`],
         ["Generated", brief.createdAt.slice(0, 16).replace("T", " ")]
       ]),
-      section(brief.executiveSummary),
-      section(brief.markdown),
+      section(`*Executive read*\n${brief.executiveSummary}`),
+      section(`*Technical evidence*\n${brief.markdown}`),
       actions([
-        button("Refresh", "intel_refresh_technical", `refresh ${competitor.canonicalDomain}`, "primary"),
-        button("Evidence", "intel_evidence", `evidence ${competitor.canonicalDomain}`),
-        button("Unknowns", "intel_unknowns", `unknowns ${competitor.canonicalDomain}`)
+        showBattlecardButton(competitor.canonicalDomain),
+        refreshBriefButton(competitor.canonicalDomain, "Refresh", "primary"),
+        evidenceButton(competitor.canonicalDomain),
+        unknownsButton(competitor.canonicalDomain)
       ])
     ]
   };
@@ -79,7 +81,7 @@ export function renderEvidenceList(competitor: Competitor, evidence: TechnicalEv
       blocks.push(section(chunk.map((item) => `*${labelValue(item.stance)} · ${item.label}* · ${formatPercent(item.confidence)}\n${item.summary}\n${slackLink(item.sourceUrl, item.sourceType)}`).join("\n\n")));
     }
   }
-  blocks.push(actions([button("Refresh brief", "intel_refresh_technical", `refresh ${competitor.canonicalDomain}`, "primary")]));
+  blocks.push(actions([refreshBriefButton(competitor.canonicalDomain, "Refresh brief", "primary"), showBattlecardButton(competitor.canonicalDomain)]));
   return {
     response_type: "ephemeral",
     text: `${competitor.name} ${title.toLowerCase()}.`,

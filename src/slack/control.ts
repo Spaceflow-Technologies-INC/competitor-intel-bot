@@ -5,6 +5,7 @@ import { scoreSourceUrl } from "../signals/source-quality.js";
 import type { Competitor, CompetitorCategory, SlackMessage } from "../types.js";
 import type { SourceRecord, Store } from "../storage/memory-store.js";
 import { isDomainLike, isPriorityToken, normalizeDomain, normalizeScheduleTime, parsePriority, shouldDiscoverDomain, titleizeDomain, tokenize } from "./command-utils.js";
+import { archiveButton, askAiButton, deleteButton, refreshBriefButton, rejectCandidateButton, showBattlecardButton, technicalBriefButton } from "./action-presets.js";
 import { competitorCategories as categories, defaultActions, isCompetitorCategory, renderHelp } from "./control-help.js";
 import { deleteCompetitorFromCommand, findCompetitor, updateCompetitorStatus } from "./competitor-status.js";
 import { handleTechnicalCommand, type QuestionAnswerRunner, type TechnicalResearchRunner } from "./technical-control.js";
@@ -135,7 +136,8 @@ function renderCompetitorAdded(competitor: Competitor, actor: string): SlackCont
     blocks: [
       header("Competitor added"),
       fields([["Name", competitor.name], ["Domain", `<https://${competitor.canonicalDomain}|${competitor.canonicalDomain}>`], ["Category", competitor.category], ["Priority", `P${competitor.monitoringPriority}`]]),
-      context(`Added${actor}. It will be included in the next scheduled intel scan.`)
+      context(`Added${actor}. It will be included in the next scheduled intel scan.`),
+      actions([showBattlecardButton(competitor.canonicalDomain, "primary"), refreshBriefButton(competitor.canonicalDomain, "Refresh scan")])
     ]
   });
 }
@@ -147,12 +149,13 @@ function renderCandidateApproval(competitor: Competitor, actor: string, discover
     blocks: [
       header("Competitor candidate"),
       fields([["Name", competitor.name], ["Domain", `<https://${competitor.canonicalDomain}|${competitor.canonicalDomain}>`], ["Category", competitor.category], ["Priority", `P${competitor.monitoringPriority}`], ["Confidence", discovery ? formatPercent(discovery.confidence) : formatPercent(competitor.similarityScore)]]),
+      renderDiscoverySources(discovery),
       context(`Suggested${actor}. Approve to include it in monitoring, or reject to keep the history but stop scans.`),
       actions([
         button("Approve", "intel_approve_candidate", `approve ${competitor.canonicalDomain}`, "primary"),
-        button("Reject", "intel_reject_candidate", `reject ${competitor.canonicalDomain}`, "danger"),
         button("Show profile", "intel_show_candidate", `show ${competitor.canonicalDomain}`),
-        button("Delete", "intel_delete_candidate", `delete ${competitor.canonicalDomain}`, "danger")
+        rejectCandidateButton(competitor.canonicalDomain),
+        deleteButton(competitor.canonicalDomain, "intel_delete_candidate")
       ])
     ]
   });
@@ -167,11 +170,19 @@ async function renderBattlecard(store: Store, query: string): Promise<SlackContr
   const blocks: SlackControlResponse["blocks"] = [
     header(`${competitor.name} battlecard`),
     fields([["Domain", `<https://${competitor.canonicalDomain}|${competitor.canonicalDomain}>`], ["Category", competitor.category], ["Status", competitor.status], ["Priority", `P${competitor.monitoringPriority}`], ["Similarity", formatPercent(competitor.similarityScore)], ["Source quality", `${quality.label} · ${formatPercent(quality.score)}`]]),
-    section(["*Battlecard*", `*What they are:* ${competitor.name} is tracked as ${labelValue(competitor.category).toLowerCase()} in the Spaceflow competitive map.`, `*Why it matters:* ${topSignal ? topSignal.summary : "No high-signal movement has been captured yet."}`, `*Next move:* ${topSignal ? topSignal.suggestedAction.replace(/_/g, " ") : "watch"}`].join("\n")),
+    section(["*Battlecard*", `*Positioning:* ${competitor.name} is tracked as ${labelValue(competitor.category).toLowerCase()} in the Spaceflow competitive map.`].join("\n")),
+    section(["*Latest signal*", topSignal ? topSignal.summary : "No high-signal movement has been captured yet.", `*Next move:* ${topSignal ? topSignal.suggestedAction.replace(/_/g, " ") : "watch"}`].join("\n")),
     divider(),
     ...renderBattlecardSignals(signals),
     renderSourceSummary(sources, competitor.canonicalDomain),
-    actions([button("Run scan", "intel_run_now", "run now", "primary"), button("Archive", "intel_archive", `archive ${competitor.canonicalDomain}`), button("Delete", "intel_delete", `delete ${competitor.canonicalDomain}`, "danger")])
+    context("Operator actions: ask a source-backed question, open the technical brief, refresh research, or change monitoring state."),
+    actions([
+      askAiButton(competitor.canonicalDomain),
+      technicalBriefButton(competitor.canonicalDomain),
+      refreshBriefButton(competitor.canonicalDomain, "Refresh scan"),
+      archiveButton(competitor.canonicalDomain),
+      deleteButton(competitor.canonicalDomain)
+    ])
   ];
   return controlResponse({ responseType: "ephemeral", text: `${competitor.name} battlecard`, blocks });
 }
@@ -203,8 +214,14 @@ function renderBattlecardSignals(signals: Awaited<ReturnType<Store["listSignalsF
 
 function renderSourceSummary(sources: SourceRecord[], competitorDomain: string): Record<string, unknown> {
   if (sources.length === 0) return context("Sources: no source graph yet.");
-  const links = sources.slice(0, 4).map((source) => `${slackLink(source.url, source.sourceType)} (${scoreSourceUrl(source.url, competitorDomain).label})`);
+  const links = sources.slice(0, 4).map((source) => `${slackLink(source.url, labelValue(source.sourceType))} (${scoreSourceUrl(source.url, competitorDomain).label})`);
   return context(`Sources: ${links.join("  ")}`);
+}
+
+function renderDiscoverySources(discovery?: CompetitorDiscoveryResult): Record<string, unknown> {
+  if (!discovery?.evidenceUrls.length) return context("Discovery sources: official website and default monitoring graph will be used after approval.");
+  const links = discovery.evidenceUrls.slice(0, 4).map((url, index) => slackLink(url, `Source ${index + 1}`));
+  return context(`Discovery sources: ${links.join("  ")}`);
 }
 
 function bestSourceQuality(sources: SourceRecord[], competitorDomain: string) {

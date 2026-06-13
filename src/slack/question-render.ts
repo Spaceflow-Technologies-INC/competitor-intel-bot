@@ -1,5 +1,6 @@
 import type { Competitor, CompetitorQuestionAnswer, QuestionAnswerPoint } from "../types.js";
-import { actions, button, context, fields, formatPercent, header, section, slackLink } from "./blocks.js";
+import { evidenceButton, showBattlecardButton, technicalBriefButton, unknownsButton } from "./action-presets.js";
+import { actions, context, fields, formatPercent, header, section, slackLink } from "./blocks.js";
 import type { SlackControlResponse } from "./technical-render.js";
 
 export function renderQuestionAnswer(competitor: Competitor, answer: CompetitorQuestionAnswer): SlackControlResponse {
@@ -14,15 +15,16 @@ export function renderQuestionAnswer(competitor: Competitor, answer: CompetitorQ
         ["Generated", answer.generatedAt.slice(0, 16).replace("T", " ")],
         ["Sources", `${answer.citations.length}`]
       ]),
-      section(`*Short answer*\n${answer.shortAnswer}`),
-      renderPoints("Evidence", answer.evidence),
-      renderPoints("Inference", answer.inferences),
-      renderPoints("Unknowns", answer.unknowns),
+      section(`*Answer*\n*Short answer:* ${answer.shortAnswer}`),
+      renderPoints("What is known", answer.evidence),
+      renderPoints("Inferred from evidence", answer.inferences),
+      renderPoints("Open gaps", answer.unknowns),
       renderCitations(answer),
       actions([
-        button("Refresh brief", "intel_refresh_technical", `refresh ${competitor.canonicalDomain}`, "primary"),
-        button("Evidence", "intel_evidence", `evidence ${competitor.canonicalDomain}`),
-        button("Unknowns", "intel_unknowns", `unknowns ${competitor.canonicalDomain}`)
+        showBattlecardButton(competitor.canonicalDomain, "primary"),
+        technicalBriefButton(competitor.canonicalDomain),
+        evidenceButton(competitor.canonicalDomain),
+        unknownsButton(competitor.canonicalDomain)
       ])
     ]
   };
