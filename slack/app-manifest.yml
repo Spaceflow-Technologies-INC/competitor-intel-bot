@@ -16,7 +16,7 @@ features:
     - command: /competitor
       url: https://competitor-intel-slack-vsfr73ns4a-ew.a.run.app/slack/commands
       description: Manage competitor monitoring from Slack.
-      usage_hint: list | add "Acme Sourcing" | add https://www.linkedin.com/company/acme-sourcing/ | approve newco.ai | show coupa.com | delete coupa.com
+      usage_hint: list | add "Acme Sourcing" | show coupa.com | tech zip.com | compare zip.com coupa.com | schedule 09:00
       should_escape: false
 
 oauth_config:

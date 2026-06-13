@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { buildServer } from "../src/server.js";
 import { MemoryStore } from "../src/storage/memory-store.js";
+import type { TechnicalBrief } from "../src/types.js";
 
 describe("server", () => {
   it("responds to health checks", async () => {
@@ -150,4 +151,50 @@ describe("server", () => {
     expect(response.json()).toMatchObject({ response_type: "ephemeral", replace_original: true });
     expect(response.body).toContain("coupa.com");
   });
+
+  it("passes technical slash commands to the configured research runner", async () => {
+    const store = new MemoryStore();
+    const competitor = await store.upsertCompetitor({
+      name: "Zip",
+      canonicalDomain: "zip.co",
+      status: "approved",
+      category: "procurement_ai",
+      similarityScore: 0.84,
+      monitoringPriority: 1
+    });
+    const technicalResearch = vi.fn(async () => ({
+      brief: technicalBrief(competitor.id),
+      refreshed: true
+    }));
+    const server = buildServer({
+      runCollection: async () => ({ processedSignals: 0, storedSignals: 0, postedSignals: 0, errors: 0 }),
+      runDailyDigest: async () => ({ postedSignals: 0 }),
+      createStore: async () => store,
+      technicalResearch
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/slack/commands",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: new URLSearchParams({ text: "tech zip.co" }).toString()
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain("Zip technical brief");
+    expect(technicalResearch).toHaveBeenCalledWith(expect.objectContaining({ competitor, forceRefresh: false }));
+  });
 });
+
+function technicalBrief(competitorId: string): TechnicalBrief {
+  return {
+    competitorId,
+    title: "Zip technical brief",
+    executiveSummary: "Zip automates intake-to-approval procurement workflows.",
+    markdown: "*What they do technically*\nZip connects intake, approvals, ERP sync, and supplier workflows.",
+    confidence: 0.82,
+    evidenceCount: 4,
+    unknownCount: 1,
+    createdAt: "2026-06-13T09:00:00.000Z"
+  };
+}

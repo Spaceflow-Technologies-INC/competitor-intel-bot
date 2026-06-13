@@ -42,6 +42,75 @@ export type SuggestedAction =
   | "review_product_gap"
   | "ignore";
 
+export type TechnicalSourceKind =
+  | "homepage"
+  | "product"
+  | "pricing"
+  | "docs"
+  | "api_docs"
+  | "changelog"
+  | "integrations"
+  | "security"
+  | "careers"
+  | "reviews"
+  | "social"
+  | "technographics"
+  | "webinar"
+  | "news"
+  | "discovery";
+
+export type ResearchDepth = "light" | "standard" | "deep";
+
+export type BriefAudience = "founder" | "sales" | "product" | "technical";
+
+export type BriefCadence = "daily" | "weekly" | "manual";
+
+export type EvidenceStance = "evidence" | "inference" | "unknown";
+
+export type EvidenceClaimType =
+  | "feature"
+  | "ai_usage"
+  | "pipeline_step"
+  | "integration"
+  | "governance"
+  | "moat"
+  | "weakness"
+  | "spaceflow_counter"
+  | "unknown";
+
+export type IntelConfig = {
+  researchDepth: ResearchDepth;
+  briefAudience: BriefAudience;
+  cadence: BriefCadence;
+  categories: CompetitorCategory[];
+  sourcePreferences: TechnicalSourceKind[];
+};
+
+export type TechnicalEvidenceItem = {
+  id?: string;
+  competitorId: string;
+  claimType: EvidenceClaimType;
+  label: string;
+  summary: string;
+  stance: EvidenceStance;
+  confidence: number;
+  sourceUrl: string;
+  sourceType: TechnicalSourceKind;
+  observedAt: string;
+};
+
+export type TechnicalBrief = {
+  id?: string;
+  competitorId: string;
+  title: string;
+  executiveSummary: string;
+  markdown: string;
+  confidence: number;
+  evidenceCount: number;
+  unknownCount: number;
+  createdAt: string;
+};
+
 export type SeedCompetitor = {
   name: string;
   domain: string;

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Competitor, CompetitorCategory, CompetitorStatus, IntelSignal, SignalType } from "../types.js";
+import type { Competitor, CompetitorCategory, CompetitorStatus, IntelConfig, IntelSignal, SignalType, TechnicalBrief, TechnicalEvidenceItem } from "../types.js";
 
 export type UpsertCompetitorInput = {
   name: string;
@@ -46,6 +46,12 @@ export interface Store {
   countSimilarSignals(input: { competitorId: string | null; signalType: SignalType }): Promise<number>;
   getSetting(key: string): Promise<string | undefined>;
   setSetting(key: string, value: string): Promise<void>;
+  getIntelConfig(): Promise<IntelConfig>;
+  saveIntelConfig(config: IntelConfig): Promise<IntelConfig>;
+  recordEvidenceItems(items: TechnicalEvidenceItem[]): Promise<TechnicalEvidenceItem[]>;
+  listEvidenceForCompetitor(competitorId: string): Promise<TechnicalEvidenceItem[]>;
+  saveTechnicalBrief(brief: TechnicalBrief): Promise<TechnicalBrief>;
+  getLatestTechnicalBrief(competitorId: string): Promise<TechnicalBrief | undefined>;
 }
 
 export class MemoryStore implements Store {
@@ -55,6 +61,9 @@ export class MemoryStore implements Store {
   private readonly signalKeys = new Map<string, string>();
   private readonly postedSignalIds = new Set<string>();
   private readonly settings = new Map<string, string>();
+  private intelConfig: IntelConfig = defaultIntelConfig();
+  private readonly evidenceItems = new Map<string, TechnicalEvidenceItem>();
+  private readonly technicalBriefs = new Map<string, TechnicalBrief>();
 
   async upsertCompetitor(input: UpsertCompetitorInput): Promise<Competitor> {
     const existing = [...this.competitors.values()].find(
@@ -181,4 +190,67 @@ export class MemoryStore implements Store {
   async setSetting(key: string, value: string): Promise<void> {
     this.settings.set(key, value);
   }
+
+  async getIntelConfig(): Promise<IntelConfig> {
+    return cloneIntelConfig(this.intelConfig);
+  }
+
+  async saveIntelConfig(config: IntelConfig): Promise<IntelConfig> {
+    this.intelConfig = cloneIntelConfig(config);
+    return cloneIntelConfig(this.intelConfig);
+  }
+
+  async recordEvidenceItems(items: TechnicalEvidenceItem[]): Promise<TechnicalEvidenceItem[]> {
+    const stored = items.map((item) => {
+      const existing = [...this.evidenceItems.values()].find((candidate) =>
+        candidate.competitorId === item.competitorId &&
+        candidate.claimType === item.claimType &&
+        candidate.label === item.label &&
+        candidate.sourceUrl === item.sourceUrl &&
+        candidate.stance === item.stance
+      );
+      const evidence = { ...item, id: existing?.id ?? randomUUID() };
+      this.evidenceItems.set(evidence.id, evidence);
+      return { ...evidence };
+    });
+    return stored;
+  }
+
+  async listEvidenceForCompetitor(competitorId: string): Promise<TechnicalEvidenceItem[]> {
+    return [...this.evidenceItems.values()]
+      .filter((item) => item.competitorId === competitorId)
+      .sort((a, b) => b.confidence - a.confidence || a.label.localeCompare(b.label))
+      .map((item) => ({ ...item }));
+  }
+
+  async saveTechnicalBrief(brief: TechnicalBrief): Promise<TechnicalBrief> {
+    const stored = { ...brief, id: brief.id ?? randomUUID() };
+    this.technicalBriefs.set(stored.id, stored);
+    return { ...stored };
+  }
+
+  async getLatestTechnicalBrief(competitorId: string): Promise<TechnicalBrief | undefined> {
+    const latest = [...this.technicalBriefs.values()]
+      .filter((brief) => brief.competitorId === competitorId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    return latest ? { ...latest } : undefined;
+  }
+}
+
+export function defaultIntelConfig(): IntelConfig {
+  return {
+    researchDepth: "standard",
+    briefAudience: "technical",
+    cadence: "weekly",
+    categories: ["procurement_ai", "sourcing_automation", "supplier_intelligence", "erp_procurement", "workflow_agent", "adjacent"],
+    sourcePreferences: ["homepage", "product", "docs", "api_docs", "changelog", "integrations", "security", "careers", "reviews", "news"]
+  };
+}
+
+function cloneIntelConfig(config: IntelConfig): IntelConfig {
+  return {
+    ...config,
+    categories: [...config.categories],
+    sourcePreferences: [...config.sourcePreferences]
+  };
 }
