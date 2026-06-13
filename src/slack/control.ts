@@ -6,7 +6,7 @@ import type { Competitor, CompetitorCategory, SlackMessage } from "../types.js";
 import type { SourceRecord, Store } from "../storage/memory-store.js";
 import { isDomainLike, isPriorityToken, normalizeDomain, normalizeScheduleTime, parsePriority, shouldDiscoverDomain, titleizeDomain, tokenize } from "./command-utils.js";
 import { deleteCompetitorFromCommand, findCompetitor, updateCompetitorStatus } from "./competitor-status.js";
-import { handleTechnicalCommand, type TechnicalResearchRunner } from "./technical-control.js";
+import { handleTechnicalCommand, type QuestionAnswerRunner, type TechnicalResearchRunner } from "./technical-control.js";
 import {
   actions,
   button,
@@ -34,6 +34,7 @@ export type IntelSlashCommandInput = {
   triggerDigest?: () => Promise<unknown>;
   discoverCompetitor?: (query: CompetitorDiscoveryQuery) => Promise<CompetitorDiscoveryResult | undefined>;
   technicalResearch?: TechnicalResearchRunner;
+  questionAnswer?: QuestionAnswerRunner;
 };
 
 const categories: CompetitorCategory[] = [
@@ -54,7 +55,8 @@ export async function handleIntelSlashCommand(input: IntelSlashCommandInput): Pr
     store: input.store,
     command,
     tokens: [...tokens],
-    ...(input.technicalResearch ? { technicalResearch: input.technicalResearch } : {})
+    ...(input.technicalResearch ? { technicalResearch: input.technicalResearch } : {}),
+    ...(input.questionAnswer ? { questionAnswer: input.questionAnswer } : {})
   });
   if (technicalResponse) return technicalResponse;
   if (command === "help" || command === "") return renderHelp();
