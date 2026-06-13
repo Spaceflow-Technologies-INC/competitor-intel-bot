@@ -1,6 +1,6 @@
 import pg from "pg";
 
-import type { Competitor, IntelSignal, SignalType } from "../types.js";
+import type { Competitor, IntelConfig, IntelSignal, SignalType, TechnicalBrief, TechnicalEvidenceItem } from "../types.js";
 import type {
   RecordSignalInput,
   RecordSignalResult,
@@ -9,7 +9,21 @@ import type {
   UpsertCompetitorInput,
   UpsertSourceInput
 } from "./memory-store.js";
-import { mapCompetitor, mapSignal, mapSource, type CompetitorRow, type SignalRow, type SourceRow } from "./postgres-mappers.js";
+import { defaultIntelConfig } from "./memory-store.js";
+import {
+  mapCompetitor,
+  mapEvidence,
+  mapIntelConfig,
+  mapSignal,
+  mapSource,
+  mapTechnicalBrief,
+  type CompetitorRow,
+  type EvidenceRow,
+  type IntelConfigRow,
+  type SignalRow,
+  type SourceRow,
+  type TechnicalBriefRow
+} from "./postgres-mappers.js";
 
 export class PostgresStore implements Store {
   private readonly pool: pg.Pool;
@@ -73,6 +87,44 @@ export class PostgresStore implements Store {
         value TEXT NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS intel_config (
+        key TEXT PRIMARY KEY,
+        value JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS competitor_evidence_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        competitor_id UUID NOT NULL REFERENCES competitors(id) ON DELETE CASCADE,
+        claim_type TEXT NOT NULL,
+        label TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        stance TEXT NOT NULL,
+        confidence DOUBLE PRECISION NOT NULL,
+        source_url TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (competitor_id, claim_type, label, source_url, stance)
+      );
+
+      CREATE TABLE IF NOT EXISTS technical_briefs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        competitor_id UUID NOT NULL REFERENCES competitors(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        executive_summary TEXT NOT NULL,
+        markdown TEXT NOT NULL,
+        confidence DOUBLE PRECISION NOT NULL,
+        evidence_count INTEGER NOT NULL,
+        unknown_count INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS competitor_evidence_items_competitor_idx
+        ON competitor_evidence_items (competitor_id, confidence DESC);
+
+      CREATE INDEX IF NOT EXISTS technical_briefs_competitor_created_idx
+        ON technical_briefs (competitor_id, created_at DESC);
     `);
   }
 
@@ -254,6 +306,107 @@ export class PostgresStore implements Store {
       `,
       [key, value]
     );
+  }
+
+  async getIntelConfig(): Promise<IntelConfig> {
+    const result = await this.pool.query<IntelConfigRow>("SELECT key, value FROM intel_config WHERE key = $1", ["workspace"]);
+    return mapIntelConfig(result.rows[0], defaultIntelConfig());
+  }
+
+  async saveIntelConfig(config: IntelConfig): Promise<IntelConfig> {
+    const result = await this.pool.query<IntelConfigRow>(
+      `
+      INSERT INTO intel_config (key, value)
+      VALUES ($1, $2::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+      RETURNING key, value
+      `,
+      ["workspace", JSON.stringify(config)]
+    );
+    return mapIntelConfig(result.rows[0], defaultIntelConfig());
+  }
+
+  async recordEvidenceItems(items: TechnicalEvidenceItem[]): Promise<TechnicalEvidenceItem[]> {
+    const stored: TechnicalEvidenceItem[] = [];
+    for (const item of items) {
+      const result = await this.pool.query<EvidenceRow>(
+        `
+        INSERT INTO competitor_evidence_items (
+          competitor_id, claim_type, label, summary, stance, confidence, source_url, source_type, observed_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (competitor_id, claim_type, label, source_url, stance) DO UPDATE SET
+          summary = EXCLUDED.summary,
+          confidence = GREATEST(competitor_evidence_items.confidence, EXCLUDED.confidence),
+          source_type = EXCLUDED.source_type,
+          observed_at = EXCLUDED.observed_at
+        RETURNING id, competitor_id, claim_type, label, summary, stance, confidence, source_url, source_type, observed_at
+        `,
+        [
+          item.competitorId,
+          item.claimType,
+          item.label,
+          item.summary,
+          item.stance,
+          item.confidence,
+          item.sourceUrl,
+          item.sourceType,
+          item.observedAt
+        ]
+      );
+      stored.push(mapEvidence(result.rows[0]));
+    }
+    return stored;
+  }
+
+  async listEvidenceForCompetitor(competitorId: string): Promise<TechnicalEvidenceItem[]> {
+    const result = await this.pool.query<EvidenceRow>(
+      `
+      SELECT id, competitor_id, claim_type, label, summary, stance, confidence, source_url, source_type, observed_at
+      FROM competitor_evidence_items
+      WHERE competitor_id = $1
+      ORDER BY confidence DESC, label ASC
+      `,
+      [competitorId]
+    );
+    return result.rows.map(mapEvidence);
+  }
+
+  async saveTechnicalBrief(brief: TechnicalBrief): Promise<TechnicalBrief> {
+    const result = await this.pool.query<TechnicalBriefRow>(
+      `
+      INSERT INTO technical_briefs (
+        competitor_id, title, executive_summary, markdown, confidence, evidence_count, unknown_count, created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id, competitor_id, title, executive_summary, markdown, confidence, evidence_count, unknown_count, created_at
+      `,
+      [
+        brief.competitorId,
+        brief.title,
+        brief.executiveSummary,
+        brief.markdown,
+        brief.confidence,
+        brief.evidenceCount,
+        brief.unknownCount,
+        brief.createdAt
+      ]
+    );
+    return mapTechnicalBrief(result.rows[0]);
+  }
+
+  async getLatestTechnicalBrief(competitorId: string): Promise<TechnicalBrief | undefined> {
+    const result = await this.pool.query<TechnicalBriefRow>(
+      `
+      SELECT id, competitor_id, title, executive_summary, markdown, confidence, evidence_count, unknown_count, created_at
+      FROM technical_briefs
+      WHERE competitor_id = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [competitorId]
+    );
+    return result.rows[0] ? mapTechnicalBrief(result.rows[0]) : undefined;
   }
 
   async close(): Promise<void> {
