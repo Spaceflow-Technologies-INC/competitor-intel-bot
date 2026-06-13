@@ -111,6 +111,32 @@ export type TechnicalBrief = {
   createdAt: string;
 };
 
+export type QuestionAnswerPoint = {
+  label: string;
+  summary: string;
+  confidence: number;
+  sourceUrl?: string;
+};
+
+export type QuestionAnswerCitation = {
+  title: string;
+  url: string;
+  excerpt: string;
+};
+
+export type CompetitorQuestionAnswer = {
+  competitorId: string;
+  question: string;
+  shortAnswer: string;
+  answerMarkdown: string;
+  confidence: number;
+  evidence: QuestionAnswerPoint[];
+  inferences: QuestionAnswerPoint[];
+  unknowns: QuestionAnswerPoint[];
+  citations: QuestionAnswerCitation[];
+  generatedAt: string;
+};
+
 export type SeedCompetitor = {
   name: string;
   domain: string;
